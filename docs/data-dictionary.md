@@ -177,13 +177,3 @@ One annoying inconsistency: the search endpoint returns `{ id, name }` rather th
 `{ drug_id, name }`, because that's what the API contract in the plan says. Everywhere else
 it's `drug_id`. The frontend maps `id` → `drugId` at the API boundary and nowhere else, so the
 weirdness stays in one file.
-
-## Still to confirm
-
-- Oshiva: happy with the `pg_` ID scheme, or do you want to just use DrugBank IDs as primary
-  key? DrugBank IDs are simpler but break for anything sourced from PubChem only.
-- Bhavishya: does `result_type` give you enough to render the two sections, or do you need a
-  separate flag?
-- Everyone: the salt-splitting decision. It inflates the drug count and search will show
-  near-duplicates. If that looks bad in the demo we can revisit, but merging needs a rule for
-  what happens to the interaction records.

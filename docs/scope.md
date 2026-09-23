@@ -1,7 +1,6 @@
 # Scope — PharmGraph AI v1
 
 Neural Cyphers T-100, GLA University Mathura.
-Maintained by Abhigyan. Ping me before changing anything under "What we are not building".
 
 ## What we're building
 
@@ -34,15 +33,39 @@ result, and a limitations page linked from everywhere.
 Plus the boring but graded stuff: a data quality report, a model card with metrics, and
 enough notes that someone could rebuild our results.
 
-## What we are not building
+## Product boundaries
 
-No prescribing, no dosage suggestions. No food-drug or drug-disease interactions — different
-data entirely, and we don't have the time. No pharmacogenomics. No mobile app. No login, no
-user accounts, no storing anything about a patient. The only thing the user ever sends us is
-a list of drug IDs.
+Two things stay out permanently, not just in v1. PharmGraph AI does not prescribe and does not
+suggest dosages — it reports what the sources say and what the model scores, and the clinician
+decides. And it stores nothing about a patient: no login, no accounts, no history. The only
+thing a user ever sends us is a list of drug IDs, so there is no patient data to protect in
+the first place.
 
-Also not doing: predicting the *type* of interaction. Just binary — does an interaction exist
-or not. Multi-class was tempting but the label quality isn't there.
+## Future scope
+
+Deferred out of v1 to keep the build finishable in eight weeks. Each of these is a reasonable
+next step once the core checker works.
+
+**Food–drug and drug–disease interactions.** Same idea, different data and a different graph
+schema — food and condition nodes alongside drug nodes. Would make the tool far more useful in
+practice, but the data sourcing alone is a project of its own.
+
+**Interaction type prediction.** Right now the model answers a binary question: does an
+interaction exist between these two drugs. The more useful question is what *kind* —
+pharmacokinetic vs pharmacodynamic, or the specific mechanism. That's a multi-class problem and
+it needs labels we don't have at sufficient quality yet.
+
+**Pharmacogenomic interactions.** Gene–drug effects, where the same pair behaves differently
+depending on the patient's genotype. Needs genomic reference data we don't have licensed.
+
+**Richer graph, better predictions.** Adding drug–target and drug–gene edges from ChEMBL turns
+this into a heterogeneous knowledge graph, which is the direction KGNN (IJCAI 2020) takes. Our
+current graph only has drug–drug edges, so cold-start drugs have nothing to learn from; target
+edges would give them a neighbourhood.
+
+**Mobile app and EHR integration.** The obvious deployment path if this ever went past a
+prototype. Web-only for now.
+
 
 ## Rules we agreed on
 
@@ -122,12 +145,3 @@ block predictions on cold-start drugs.
 
 KGNN (IJCAI 2020, https://www.ijcai.org/proceedings/2020/0380.pdf) is the backup reference if
 we end up adding drug-target edges. Not planned for v1.
-
-## Sign-off
-
-Abhigyan — data + ML pipeline + docs
-Oshiva — backend API, GNN training, integration
-Bhavishya — frontend, testing, final deliverables
-
-Open: need Oshiva and Bhavishya to read this and flag anything they disagree with before
-commit 7. Especially the "no severity on predictions" rule, since it affects the results UI.
