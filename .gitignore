@@ -1,0 +1,32 @@
+# --- Licensed / large data: never committed (see data/README.md) ---
+data/raw/
+data/processed/
+ml/artifacts/
+*.parquet
+*.npz
+*.pt
+
+# --- Secrets ---
+.env
+.env.local
+*.pem
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

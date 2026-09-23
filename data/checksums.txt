@@ -1,0 +1,11 @@
+# PharmGraph AI — dataset checksums (SHA-256)
+#
+# Raw and processed data files are not committed (see data/README.md).
+# This file is the shared record of exactly which version each member has.
+#
+# Format:  <sha256>  <filename>  <source>  <accessed YYYY-MM-DD>
+#
+# Example:
+#   3b1f...9ac2  drugs.parquet  DrugBank 5.1.x  2026-09-30
+#
+# --- entries below this line ---
