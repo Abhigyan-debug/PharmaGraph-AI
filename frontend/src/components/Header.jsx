@@ -1,4 +1,10 @@
-function Header() {
+const LINKS = [
+  ['#/', 'Home'],
+  ['#/results', 'Results'],
+  ['#/about/limitations', 'Limitations'],
+];
+
+function Header({ route }) {
   return (
     <header className="topbar">
       <div>
@@ -6,9 +12,11 @@ function Header() {
         <h1>PharmGraph AI</h1>
       </div>
       <nav className="nav" aria-label="Main navigation">
-        <a href="#">Home</a>
-        <a href="#">Results</a>
-        <a href="#">About</a>
+        {LINKS.map(([href, label]) => (
+          <a key={href} href={href} aria-current={route === href ? 'page' : undefined}>
+            {label}
+          </a>
+        ))}
       </nav>
     </header>
   );

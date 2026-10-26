@@ -208,6 +208,7 @@ h1 {
 
 .result-column {
   display: grid;
+  align-content: start;
   gap: 14px;
 }
 
@@ -281,4 +282,55 @@ h1 {
 .info-box h4 {
   margin-top: 0;
   margin-bottom: 8px;
+}
+
+.nav a[aria-current='page'] {
+  opacity: 1;
+  font-weight: 600;
+  border-bottom: 2px solid #60a5fa;
+}
+
+a {
+  color: #93c5fd;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.error-text {
+  color: #fecaca;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.severity {
+  text-transform: capitalize;
+}
+
+.severity.minor {
+  background: rgba(52, 211, 153, 0.12);
+  color: #bbf7d0;
+}
+
+.severity.unknown {
+  background: rgba(148, 163, 184, 0.15);
+  color: #e2e8f0;
+  text-transform: none;
+}
+
+.severity.contraindicated {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.plain-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
 }
