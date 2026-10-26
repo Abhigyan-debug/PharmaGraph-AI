@@ -108,6 +108,19 @@ the answer and the reported AUPR is fiction. Negatives for training get resample
 but val and test negatives are fixed with a recorded seed — otherwise the metric moves between
 runs and we can't compare anything.
 
+## Known interactions (API response)
+
+`POST /api/v1/interactions/known` returns `drugs` (`{id, name}` in the order chosen),
+`pairs_checked`, `interactions` and `pairs_without_record`. Each interaction carries
+`result_type: "known"`, `interaction_id`, `pair`, `interaction_type`, `description`, `severity`,
+`contraindicated`, `severity_raw`, `severity_sources` and `source`.
+
+`contraindicated` is true only when one of the source labels is a contraindication (ANSM or
+KEGG `CI`, WorldVistA `contraindication`); `app/services/severity.py` holds the exact list.
+`pairs_without_record` lists pairs no source records. The UI must not present those as safe.
+
+Errors from any endpoint have one shape: `{"error": "<name>", "detail": ..., "code": <status>}`.
+
 ## Prediction (API response)
 
 What the predict endpoint returns per pair. Becomes Pydantic models in commit 25.

@@ -2,6 +2,96 @@
 
 What was built, how it works, and the concepts behind it. Newest first.
 
+## 2026-10-26 — Error format, request logging, severity service (commits 17 and 13)
+
+**One error shape (`core/errors.py`).** FastAPI's defaults answer a validation error, an
+`HTTPException` and a crash in three different shapes. `app.add_exception_handler(Type, func)`
+says "when this kind of exception escapes a route, build the response with `func`", so every
+failure now looks like `{"error": "validation_error", "detail": [...], "code": 422}`. Handling
+starlette's `HTTPException` (not just FastAPI's) also covers 404 and 405, which the framework
+raises itself. A crash returns a generic 500 message; the real traceback goes to the log only,
+because error text can leak internals.
+
+**Request logging (`core/request_log.py`).** `app.middleware("http")(log_requests)` wraps every
+request: `call_next(request)` runs the route, and the code around it measures time with
+`time.perf_counter()`. Each request gets a random 12-character ID, sent back in the
+`X-Request-ID` header and written in the log line, so a problem seen in the browser can be found
+in the log. Only the path is logged, never the query string or body. (The file isn't named
+`logging.py`: a module with a standard-library name can shadow the real one.)
+
+**Severity service (`services/severity.py`).** The level is already decided in the pipeline.
+What's left for the API is whether the UI may say "contraindicated", and the rule is that only a
+source's own label can say so. The data has exactly five such labels, so the code checks against
+that exact set instead of searching text: `"OSCAR: CI"` or "not recommended" don't count, and
+neither does `major` on its own. Warfarin + aspirin is major but not contraindicated;
+sildenafil + nitroglycerin is both.
+
+## 2026-10-26 — Search, validation and known-interactions API (commits 14–16)
+
+**Request flow.** A request reaches `main.py`, which hands `/api/v1/drugs/...` to
+`api/routes/drugs.py` and `/api/v1/interactions/...` to `api/routes/interactions.py`
+(`include_router`). The route checks the input, calls a function in `services/`, and FastAPI turns
+the returned dict into JSON shaped by a Pydantic model in `models/schemas.py`.
+
+**Dependency injection.** `db: Session = Depends(get_db)` tells FastAPI: before calling this
+function, call `get_db()` and pass in what it yields. `get_db` opens a session, `yield`s it, and
+closes it after the response is sent, so no route can forget to close a connection.
+
+**Search (`services/drugs.py`).** One SQL query ranks drugs in two tiers: names or synonyms that
+*start with* the query first (`LIKE 'warf%'`), then typo matches by `similarity()` above 0.4.
+`unnest(synonyms)` turns the synonym array into rows so each one can be compared. `%` and `_` in
+the user's text are escaped first, otherwise typing `%` would match every drug. `Query(min_length=2)`
+rejects one-letter searches before any SQL runs.
+
+**Validation (`models/schemas.py`).** `@field_validator("drug_ids")` runs on every request body.
+`list(dict.fromkeys(ids))` drops repeated IDs but keeps the order the user picked (a dict keeps
+insertion order and can't hold a key twice). If fewer than 2 or more than 10 remain, raising
+`ValueError` makes FastAPI answer 422 with the message. Unknown IDs need the database, so
+`services/interactions.py` checks those and raises `HTTPException(422)` naming them.
+
+**Known interactions (`services/interactions.py`).** `combinations(sorted(ids), 2)` lists every
+pair once: 3 drugs give 3 pairs, 10 drugs give 45. Sorting first makes each pair come out as
+`(smaller, larger)`, the same order as `pair_key` in the table, so one `WHERE pair_key IN (...)`
+fetches them all through the index. Pairs with no row are returned as `pairs_without_record`:
+no record in our sources is not proof the combination is safe, and the UI has to say that.
+
+## 2026-10-26 — PostgreSQL tables and seed (commit 11)
+
+**Problem.** The tables existed only as Parquet files. The API needs them in a database it can
+query in milliseconds.
+
+**Setup.** One database user just for the app (`pharmgraph`), owning one database
+(`pharmgraph`), so a bug in the app can't touch anything else on the server. The connection
+string, password included, lives only in `.env`, which Git ignores. `config.py` therefore has no
+default for `DATABASE_URL`: without `.env` the app stops at startup with "Field required" rather
+than silently connecting somewhere wrong.
+
+**`app/core/database.py`.** `create_engine()` makes the *engine*, the object that knows how to
+reach the database and keeps a pool of open connections. It doesn't connect until first used.
+`sessionmaker()` makes *sessions*: one unit of work where you read or write and then commit.
+`pool_pre_ping=True` checks a pooled connection is alive before handing it out.
+
+**`app/models/tables.py`.** Each class is a table, each `mapped_column` a column.
+`Mapped[str | None]` means the column may be empty (NULL); plain `Mapped[str]` means it may not.
+The rules from the data dictionary are also *constraints*, rules PostgreSQL enforces on every
+insert:
+- `CheckConstraint("severity_display IN (...)")`: severity can only be one of four words.
+- `CheckConstraint("drug_a_id < drug_b_id")`: pairs are always stored sorted.
+- `ForeignKey("drugs.drug_id")`: an interaction can only name a drug that exists.
+- `UniqueConstraint("pair_key", "interaction_type")`: no repeated interaction. It also builds an
+  index on `pair_key`, which is what makes pair lookups fast.
+
+Tested by inserting three bad rows by hand: all three were refused.
+
+**`app/seed.py`.** Drops and recreates both tables, then inserts in batches of 10,000 rows.
+`records()` converts pandas' `NaN` (missing) into Python's `None`, which the database stores as
+NULL. `ANALYZE` at the end collects statistics; before it, PostgreSQL guessed 558 rows for a
+single pair, after it, 1, and the lookup takes 0.05 ms.
+
+**`pg_trgm`.** A PostgreSQL extension that splits text into three-letter pieces and scores how
+many two strings share. "warfrin" vs "warfarin" scores 0.55; that's what the search API (commit
+14) will use to forgive typos.
+
 ## 2026-10-26 — `ml/pipelines/quality_report.py` (commit 9)
 
 **Problem.** Quality numbers lived in script output and chat. A report typed by hand goes

@@ -65,19 +65,33 @@ decoder. Trained weights go to `ml/artifacts/` (gitignored).
 
 FastAPI. `main.py` creates the app and sets CORS for the Vite dev server.
 
-- `api/routes/`: one module per resource (`drugs`, `interactions`). Thin; they validate input
-  and call a service.
-- `services/`: the logic. `severity.py` *(planned)* is the only place severity strings are
-  mapped at runtime.
-- `models/` *(planned)*: SQLAlchemy tables (`drugs`, `synonyms`, `known_interactions`) and the
-  Pydantic response schemas.
-- `core/` *(planned)*: `config.py`, settings from environment variables (`DATABASE_URL`,
-  `MODEL_PATH`, ...).
+- `api/routes/`: one module per resource (`drugs`, `interactions`), mounted under `/api/v1` in
+  `main.py`. Thin; they validate input and call a service. `/interactions/predict` is still a
+  placeholder.
+- `services/`: the logic. `drugs.py` (search), `interactions.py` (known interactions),
+  `severity.py` (whether a pair may be called contraindicated).
+- `core/errors.py`: every error as `{error, detail, code}`. `core/request_log.py`: one log line
+  and an `X-Request-ID` per request.
+- `tests/`: unit tests, run from `backend/` with pytest.
+- `models/schemas.py`: Pydantic request and response shapes, including the 2–10 drug rule.
+- `models/tables.py`: the SQLAlchemy tables `drugs` and `known_interactions`, with the data
+  dictionary's rules as database constraints. Synonyms are an array column on `drugs`. Pydantic
+  response schemas come with the API commits.
+- `core/config.py`: settings from `.env` (`DATABASE_URL`, `MODEL_PATH`, ...). `core/database.py`:
+  the engine and session factory.
+- `seed.py`: drops, recreates and reloads both tables from `data/processed/`
+  (`cd backend; ..\.venv\Scripts\python.exe -m app.seed`).
 
-### `frontend/` *(planned)*
+Dependencies are pinned in `backend/requirements.txt`. The database is PostgreSQL 17 with the
+`pg_trgm` extension, one app user and one database, both named `pharmgraph`.
 
-React + Vite + TypeScript. Routes `/`, `/results` and `/about/limitations`. The API client is
-the only place where JSON field names are converted to camelCase.
+### `frontend/`
+
+React + Vite (JavaScript). `App.jsx` holds the state and puts the page together from
+`components/` (`Header`, `Hero`, `SearchPanel`, `ResultsPanel`, `SafetyPanel`). The data comes
+from `data/sampleData.js` until the UI calls the API. Routes `/`, `/results` and
+`/about/limitations` still to come. The API client will be the only place where JSON field
+names are converted to camelCase.
 
 ### `docs/`
 
