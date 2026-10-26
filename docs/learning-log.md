@@ -2,6 +2,71 @@
 
 What was built, how it works, and the concepts behind it. Newest first.
 
+## 2026-10-26 — Fingerprints, edge split, graph, baseline (commits 19–22)
+
+**Fingerprints (`ml/pipelines/featurize.py`).** `rdFingerprintGenerator.GetMorganGenerator(radius=2,
+fpSize=2048)` looks at every atom and its neighbourhood up to two bonds away, hashes each pattern
+to one of 2,048 positions and sets that bit. `GetFingerprintAsNumPy` returns the bits as a NumPy
+array, and `np.stack` puts the 1,705 arrays into one matrix. Rows are sorted by `drug_id` and
+saved next to that `drug_ids` array, so row 0 is always the same drug. 28 drugs share a
+fingerprint with another. 27 of them differ only in stereochemistry (citalopram and
+escitalopram, quinine and quinidine), which Morgan bits ignore by default; the last is
+trihexyphenidyl and procyclidine.
+
+**Edge split (`ml/graph/split_edges.py`).** `positive_pairs` turns each known pair into two row
+indices with the smaller first. `rng = np.random.default_rng(42)` shuffles them once, the first
+70% become train, the next 15% val, the rest test. `sample_negatives` draws random index pairs
+and keeps one only if it isn't a self pair, isn't a known pair and wasn't drawn before; the
+`forbidden` set grows after each part, so a negative can't repeat across parts either. The last
+loop compares all six parts pairwise and stops the script if any two share a pair: that's the
+leakage check. Splitting by edge means every drug is seen in training; a split by drug would
+test new drugs and is harder.
+
+**Graph (`ml/graph/build_graph.py`).** PyG stores edges as `edge_index`, a 2 × E tensor of row
+indices. `to_undirected` adds (v, u) for every (u, v), so 191,392 pairs become 382,784 columns.
+`Data(x=..., edge_index=..., drug_ids=...)` bundles features, edges and the ID list;
+`torch.save` writes it. The checks make sure the edge count is exactly twice the pair count, the
+graph is undirected, and there are no self loops. Loading it back needs
+`torch.load(path, weights_only=False)`, because the file holds a Python object and not just
+tensors.
+
+**Baseline (`ml/models/baseline_sklearn.py`).** A pair's features are the two fingerprints side
+by side, 4,096 columns. They're mostly zeros, so `scipy.sparse` keeps only the ones and
+`sparse.hstack` glues the two halves. `LogisticRegression(solver="liblinear")` learns one weight
+per column; `predict_proba(...)[:, 1]` is the probability of "interacts". AUROC and AUPR rank the
+scores without a cut-off, F1 uses 0.5. A random-score row on the same pairs shows what guessing
+gets (about 0.50 everywhere at 1:1). Test AUPR is 0.858: the number the GCN has to beat.
+
+## 2026-10-26 — Frontend on the real API, routes, API tests (commits 5, 12, 18)
+
+**Proxy.** `server.proxy: {'/api': 'http://127.0.0.1:8000'}` in `vite.config.js` makes the dev
+server forward any `/api/...` request to FastAPI, so the browser only talks to port 5173.
+
+**API client (`src/api.js`).** `request` calls `fetch`, reads the JSON, and on a non-2xx status
+throws an `Error` with the backend's `detail`, so components only deal with data or an error
+message. `checkKnownInteractions` renames `pairs_checked` to `pairsChecked` and so on, here and
+nowhere else.
+
+**Debounced search (`App.jsx`).** The `useEffect` on `[query]` starts a 250 ms `setTimeout`. If
+the user types again first, React runs the cleanup function: `clearTimeout` cancels the timer
+and `controller.abort()` cancels a request already in flight, so an old answer can't overwrite a
+newer one. An aborted `fetch` rejects with `AbortError`, which is ignored.
+
+**Hash routes.** `window.location.hash` is the part after `#`. A `hashchange` listener copies it
+into `route` state and the page renders one of three views. No router library, and refreshing
+`#/results` needs no server setup. Results live in state, so a refresh empties that page, which
+then links back to search.
+
+**Results.** Each documented card shows the severity, a red Contraindicated badge only when the
+API's `contraindicated` is true, and "Severity not reported by our sources" for `unknown`. Pairs
+in `pairs_without_record` get their own box that says no record does not mean safe. The GNN
+column says the model isn't trained yet instead of showing made-up numbers.
+
+**API tests (`backend/tests/test_api.py`).** `TestClient(app)` sends requests straight into the
+FastAPI app, through the middleware and error handlers, without a server. `pytestmark =
+pytest.mark.skipif(...)` skips the whole file when the database isn't seeded, instead of failing
+with a connection error. `@pytest.mark.parametrize` runs one test with four bad selections.
+
 ## 2026-10-26 — Error format, request logging, severity service (commits 17 and 13)
 
 **One error shape (`core/errors.py`).** FastAPI's defaults answer a validation error, an

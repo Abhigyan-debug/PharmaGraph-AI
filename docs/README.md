@@ -24,10 +24,13 @@ PharmaGraph-AI/
 ├── frontend/           React + Vite
 │   └── src/
 │       ├── components/     Header, Hero, SearchPanel, ResultsPanel, SafetyPanel
-│       ├── data/           sample data until the UI calls the API
+│       ├── api.js          calls the backend
 │       └── App.jsx
 ├── ml/
 │   ├── pipelines/      data pipeline, run in the order below
+│   ├── graph/          edge split and PyG graph
+│   ├── models/         logistic regression baseline
+│   ├── experiments/    model scores (committed)
 │   └── requirements.txt
 ├── data/               README and checksums are committed; raw/ and processed/ are not
 └── docs/               scope, data dictionary, decisions, architecture, progress, testing
@@ -39,6 +42,7 @@ Python 3.10, Node 20+ and PostgreSQL 17.
 
 ```powershell
 python -m venv .venv
+.venv\Scripts\python.exe -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
 .venv\Scripts\python.exe -m pip install -r backend/requirements.txt -r ml/requirements.txt
 cd frontend; npm install; cd ..
 ```
@@ -70,10 +74,15 @@ The raw files go in `data/raw/`; `data/checksums.txt` lists every file and its s
 .venv\Scripts\python.exe -m ml.pipelines.fetch_pubchem_names
 .venv\Scripts\python.exe -m ml.pipelines.build_tables
 .venv\Scripts\python.exe -m ml.pipelines.quality_report
+.venv\Scripts\python.exe -m ml.pipelines.featurize
+.venv\Scripts\python.exe -m ml.graph.split_edges
+.venv\Scripts\python.exe -m ml.graph.build_graph
+.venv\Scripts\python.exe -m ml.models.baseline_sklearn
 ```
 
 `load_kegg` and `fetch_pubchem_names` call public APIs and take a while the first time; both
-cache what they fetch and pick up where they stopped.
+cache what they fetch and pick up where they stopped. The last four steps build the model
+inputs and score the baseline (about a minute).
 
 ## Run
 
@@ -95,7 +104,8 @@ The app runs at http://localhost:5173.
 ## Tests
 
 ```powershell
-.venv\Scripts\python.exe -m pip install pytest
 cd backend
 ..\.venv\Scripts\python.exe -m pytest
 ```
+
+The API tests use the seeded database and skip themselves if it isn't there.

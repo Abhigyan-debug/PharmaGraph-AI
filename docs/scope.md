@@ -74,7 +74,7 @@ These came out of the discussion about what could go wrong if someone actually u
 **Known and predicted never go in the same list.** Two sections, visually different. If we
 merge them the user has no idea which claims have evidence behind them.
 
-**Severity only where the source says so.** If DrugBank doesn't give a severity for a pair,
+**Severity only where the source says so.** If no source gives a severity for a pair,
 it shows as "unknown". We do not infer it, and we definitely don't infer it from the model
 score — the model predicts whether an interaction exists, not how dangerous it is.
 
@@ -95,19 +95,19 @@ Otherwise we can't explain our own numbers during the viva.
 
 Details, licenses and download steps are in [data/README.md](../data/README.md). Short version:
 
-- **DrugBank** — the main one. Drug names, SMILES, documented interactions. Needs an academic
-  account and approval takes a few days, so this is on the critical path.
-- **openFDA** — public API, free. We use it for extra names/synonyms and label text. Not used
-  as training labels.
-- **TWOSIDES** — drug pairs from side-effect co-occurrence. Useful as extra graph edges, but
-  these are statistical signals from adverse event reports, not confirmed interactions. If we
-  use them, anything derived from them has to say so.
-- **PubChem** — for filling in a SMILES or CID when DrugBank doesn't have one.
-- **ChEMBL** — only if we get time to try a heterogeneous graph. Probably won't.
+- **TDC DDI DrugBank** — the interaction graph: 191,402 pairs over 1,706 drugs, with DrugBank
+  IDs and SMILES. Replaced the DrugBank download, which we couldn't get (decision 6).
+- **DDInter 2.0** — severity, from its full tables as published in the OpenMRS DDI knowledge
+  base (decision 13).
+- **Ayvaz et al. merged set** and **KEGG DDI** — more severity, with every source's own label
+  kept (decisions 9 and 10).
+- **PubChem** and RxNorm brand names — readable names and synonyms for search.
 
-Two things that aren't negotiable: we don't commit the raw DrugBank export anywhere (license
-forbids redistributing it), and every interaction we show keeps its `source` field so it can
-be traced back.
+openFDA and TWOSIDES were in the first plan and are not used.
+
+Two things that aren't negotiable: we don't commit raw or processed data anywhere (DDInter is
+CC BY-NC-SA, KEGG and Ayvaz can't be redistributed), and every interaction we show keeps its
+`source` field so it can be traced back.
 
 ## How we know it worked
 

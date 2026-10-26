@@ -53,12 +53,19 @@ write them if any rule from the data dictionary breaks (`check()`).
 `quality_report` reads the final tables and writes `docs/data-quality-report.md`. Every number
 in that file comes from the script; rerun it rather than editing the report.
 
-*(planned)* `featurize`.
+`featurize` turns each drug's SMILES into a Morgan fingerprint and writes
+`node_features.npz`: the matrix `X` and the `drug_ids` array that says which drug each row is.
 
-### `ml/graph/`, `ml/models/` *(planned)*
+### `ml/graph/`, `ml/models/`
 
-`build_graph` and `split_edges` produce the PyG graph and the train/val/test split.
-`baseline_sklearn` is the logistic regression baseline and `gcn_ddi` the GCN with its MLP
+`split_edges` divides the known pairs 70/15/15 into train, val and test, adds the same number
+of random non-pairs to each part, and refuses to write if any pair is in two parts.
+`build_graph` writes `pharmgraph.pt`, the PyG graph of every known pair; `positive_pairs` in
+`split_edges` is shared by both, so they see the same edges. Training must use only the train
+edges for message passing.
+
+`baseline_sklearn` is the logistic regression baseline; it writes its scores to
+`ml/experiments/baseline_metrics.json` (committed). *(planned)* `gcn_ddi`, the GCN with its MLP
 decoder. Trained weights go to `ml/artifacts/` (gitignored).
 
 ### `backend/app/`
@@ -72,7 +79,8 @@ FastAPI. `main.py` creates the app and sets CORS for the Vite dev server.
   `severity.py` (whether a pair may be called contraindicated).
 - `core/errors.py`: every error as `{error, detail, code}`. `core/request_log.py`: one log line
   and an `X-Request-ID` per request.
-- `tests/`: unit tests, run from `backend/` with pytest.
+- `tests/`: run from `backend/` with pytest. `test_api.py` calls the endpoints through
+  `TestClient` and needs the seeded database; it skips itself otherwise.
 - `models/schemas.py`: Pydantic request and response shapes, including the 2–10 drug rule.
 - `models/tables.py`: the SQLAlchemy tables `drugs` and `known_interactions`, with the data
   dictionary's rules as database constraints. Synonyms are an array column on `drugs`. Pydantic
@@ -87,11 +95,11 @@ Dependencies are pinned in `backend/requirements.txt`. The database is PostgreSQ
 
 ### `frontend/`
 
-React + Vite (JavaScript). `App.jsx` holds the state and puts the page together from
-`components/` (`Header`, `Hero`, `SearchPanel`, `ResultsPanel`, `SafetyPanel`). The data comes
-from `data/sampleData.js` until the UI calls the API. Routes `/`, `/results` and
-`/about/limitations` still to come. The API client will be the only place where JSON field
-names are converted to camelCase.
+React + Vite (JavaScript). `App.jsx` holds the state, picks the page from the URL hash
+(`#/`, `#/results`, `#/about/limitations`) and puts it together from `components/`
+(`Header`, `Hero`, `SearchPanel`, `ResultsPanel`, `SafetyPanel`). `api.js` is the only file
+that calls the backend and the only place where JSON field names become camelCase. In
+development Vite forwards `/api` to the backend on port 8000 (`vite.config.js`).
 
 ### `docs/`
 

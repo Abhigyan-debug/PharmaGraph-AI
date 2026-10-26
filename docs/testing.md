@@ -53,8 +53,14 @@ Server: `cd backend; ..\.venv\Scripts\python.exe -m uvicorn app.main:app --port 
 | 2026-10-26 | error shapes: short search, 1 drug, unknown id, unknown route, wrong method | all `{"error", "detail", "code"}`: `validation_error` 422, `unknown_drug_ids` 422, `not_found` 404, `method_not_allowed` 405 |
 | 2026-10-26 | request logging | one `request_id=… method=… path=… status=… ms=…` line per request; `X-Request-ID` header matches the log |
 
-Unit tests: `tests/test_severity.py`, 4 tests, all pass (run as plain functions on 2026-10-26;
-pytest couldn't be installed that day because PyPI wasn't reachable). Not tested yet: the 500
+Automated tests (2026-10-26): `cd backend; ..\.venv\Scripts\python.exe -m pytest` → 17 passed
+in 2.5 s. `tests/test_severity.py` (4) checks the contraindication labels. `tests/test_api.py`
+(13) runs the endpoints through FastAPI's `TestClient` against the seeded database: health,
+search by name / brand / typo, a too-short query, warfarin + aspirin (major, not
+contraindicated), sildenafil + nitroglycerin (contraindicated), a pair with no record
+(bivalirudin + goserelin) listed in `pairs_without_record`, three drugs → three pairs, an
+unknown ID, selections of 0, 1, the same drug twice and 11 drugs, and the `X-Request-ID`
+header. The API tests skip themselves if the database isn't seeded. Not tested yet: the 500
 handler, since nothing triggers an unexpected error on purpose.
 
 The first search run used pg_trgm's default cut-off of 0.3 and returned look-alike brands
@@ -65,9 +71,35 @@ cut-off is now 0.4. Error responses don't share one shape yet; that's commit 17.
 `drug_id` per DrugBank ID, unique `(pair_key, interaction_type)`, sorted pair, both drugs exist,
 no `#Drug` placeholder left, severity in the enum. The build stops if any fails.
 
+## Model inputs and baseline
+
+| Date | What was checked | How | Result |
+|---|---|---|---|
+| 2026-10-26 | Fingerprints | `python -m ml.pipelines.featurize` | X 1,705 × 2,048 float32, aligned `drug_ids`; bits set per drug median 42 (min 1, max 162); 28 drugs share a fingerprint with another; DB11630 left out |
+| 2026-10-26 | Edge split | `python -m ml.graph.split_edges` | train 133,974 / val 28,708 / test 28,710 positives, same number of negatives each; no pair in two of the six parts; 10 pairs dropped (DB11630) |
+| 2026-10-26 | Graph | `python -m ml.graph.build_graph` | `Data(x=[1705, 2048], edge_index=[2, 382784])`, undirected, no self loops, no isolated drug; median degree 182, max 913; its 191,392 pairs equal the split's positives; warfarin–aspirin edge present |
+| 2026-10-26 | Logistic regression baseline | `python -m ml.models.baseline_sklearn` (69 s) | val AUROC 0.877, AUPR 0.859, F1 0.813; test AUROC 0.875, AUPR 0.858, F1 0.811; random scores on test AUROC 0.502, AUPR 0.501 |
+
+The baseline sees each pair as `[x_u || x_v]`, the two fingerprints side by side, so it can
+only learn which structures tend to interact. Negatives are uniform random pairs, which are
+easier than real non-interacting pairs, and every test drug also appears in training. Both make
+these scores optimistic for new drugs; the GCN will be scored on the same split.
+
+## Frontend (against the running API, in Playwright)
+
+| Date | What was checked | Result |
+|---|---|---|
+| 2026-10-26 | `npx vite build` | builds (150 kB JS, 49 kB gzipped) |
+| 2026-10-26 | typing `warfrin` | one result, Warfarin, after the 250 ms pause |
+| 2026-10-26 | one drug selected | Check interactions disabled |
+| 2026-10-26 | warfarin, aspirin, bivalirudin, goserelin → Check | goes to `#/results`; 3 documented pairs with severity and sources; the 3 goserelin pairs under "No record found" with the "does not mean the combination is safe" note |
+| 2026-10-26 | sildenafil, nitroglycerin, dofetilide → Check | sildenafil–nitroglycerin shows Contraindicated + Major; sildenafil–dofetilide shows "Severity not reported by our sources" |
+| 2026-10-26 | Potential (GNN) column | "model is not trained yet" message, no numbers |
+| 2026-10-26 | `#/about/limitations` | four limitation boxes; nav marks the current page |
+| 2026-10-26 | console | no errors except a missing `favicon.ico` |
+
 ## Not yet tested
 
-- API: no automated test suite yet (commit 18); the checks above were run by hand. Prediction
-  endpoint is still a placeholder.
-- Model: no fingerprints, graph or baseline yet (commits 19–22).
-- Frontend: runs on sample data only; never tested against the API.
+- Prediction endpoint is still a placeholder; no GCN yet.
+- Frontend: no automated tests; checked by hand in Playwright at desktop width only. Behaviour
+  when the backend is down was not checked.
