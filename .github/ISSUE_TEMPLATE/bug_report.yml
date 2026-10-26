@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in the app, API or pipeline doesn't work as it should
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write it so someone else can reproduce it without asking you. A bug we can't reproduce
+        usually doesn't get fixed.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / API
+        - Frontend
+        - Data pipeline
+        - ML model
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including the error message or traceback if there is one.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran, request you sent, or drugs you selected.
+      placeholder: |
+        1. uvicorn app.main:app --reload
+        2. POST /api/v1/interactions/known with {"drug_ids": ["pg_000123", "pg_000456"]}
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`
+      placeholder: 38611a1
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      description: Tick if it applies. These get fixed before anything else.
+      options:
+        - label: A predicted interaction was shown as documented, or the two lists got mixed
+        - label: A severity was shown that no source gave (or "contraindicated" without the source saying it)

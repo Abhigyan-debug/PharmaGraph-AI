@@ -1,0 +1,57 @@
+name: Data issue
+description: A wrong, missing or suspicious record in one of our datasets
+title: "data: "
+labels: ["data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For problems with the data itself: a pair with the wrong severity, a drug that
+        mapped to the wrong DrugBank ID, a source file that changed. Bugs in the scripts
+        go in a bug report.
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      options:
+        - TDC DDI DrugBank
+        - DDInter
+        - Ayvaz merged set (ANSM / NDF-RT / OSCAR / WorldVistA / ONC)
+        - KEGG
+        - PubChem
+        - Our own mapping or merge step
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - Wrong severity
+        - Sources disagree
+        - Wrong ID mapping
+        - Missing drug or pair
+        - Duplicate record
+        - Checksum doesn't match
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: ids
+    attributes:
+      label: Drugs or pair involved
+      description: DrugBank IDs or our pair_key
+      placeholder: DB00682__DB00945
+
+  - type: textarea
+    id: details
+    attributes:
+      label: What's wrong and how you found it
+      description: |
+        Include what the source says, what we have, and where you checked (e.g. the
+        DDInter page for the pair, or the raw row).
+    validations:
+      required: true

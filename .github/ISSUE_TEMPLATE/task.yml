@@ -1,0 +1,48 @@
+name: Task
+description: A piece of planned work, usually one commit from the plan
+title: "task: "
+labels: ["task"]
+body:
+  - type: input
+    id: commit
+    attributes:
+      label: Commit number
+      description: From the 36-commit plan, if it maps to one
+      placeholder: "10"
+
+  - type: dropdown
+    id: owner
+    attributes:
+      label: Owner
+      options:
+        - Abhigyan
+        - Oshiva
+        - Bhavishya
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Deliverable
+      description: Files or behaviour this task produces
+      placeholder: ml/pipelines/merge_known_ddi.py writing data/processed/known_ddi.parquet
+    validations:
+      required: true
+
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: How a reviewer can check it's finished
+      placeholder: |
+        - [ ] pair_key unique, no self pairs
+        - [ ] counts written to the quality report
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked-by
+    attributes:
+      label: Blocked by
+      description: Other tasks or decisions this waits on. Leave empty if none.
