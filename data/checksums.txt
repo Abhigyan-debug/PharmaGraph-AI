@@ -9,3 +9,18 @@
 #   3b1f...9ac2  drugs.parquet  DrugBank 5.1.x  2026-09-30
 #
 # --- entries below this line ---
+
+3a7668b590ebca56c1eaef0dff291bbd8c2aebfea1fd148c04e11ea3c2c73ecb  tdc_ddi_drugbank.tab  TDC DDI DrugBank (Harvard Dataverse file 4139573)  2026-10-08
+a22ca451d2b755ca2331886f7e00540c86f555f9f55704a59a19c691251f52e0  ddinter_downloads_code_A.csv  DDInter 2.0 bulk download (ATC A)  2026-10-08
+76de5115a55587f0e822e1096b684fd3ddde058fbefcbb19896df58820ace130  ddinter_downloads_code_B.csv  DDInter 2.0 bulk download (ATC B)  2026-10-08
+c0627ec39965dbe27829e4934cd20d71eb079f4e373287678737bba9423a306a  ddinter_downloads_code_D.csv  DDInter 2.0 bulk download (ATC D)  2026-10-08
+f0f925f0ba1ee68c4668d3e7a6732719b34623b22a0f5d017f9090e59f63c88e  ddinter_downloads_code_H.csv  DDInter 2.0 bulk download (ATC H)  2026-10-08
+f54f4486cc00344f8c86508c31c2ca3fad6d1d37ec3af5bcf609b4bbda5507ef  ddinter_downloads_code_L.csv  DDInter 2.0 bulk download (ATC L)  2026-10-08
+83f8c0edb20d09ef29b8500b48f9623e208379525688ade9e70a7df2d8749d55  ddinter_downloads_code_P.csv  DDInter 2.0 bulk download (ATC P)  2026-10-08
+1c39c3d4a6e41659b7a988538d7f363867592abc6f41a815de8746f6e2150574  ddinter_downloads_code_R.csv  DDInter 2.0 bulk download (ATC R)  2026-10-08
+353973fb300453946aea95733e8fb52338e4b59426d2ce6ca318363d4f84f10a  ddinter_downloads_code_V.csv  DDInter 2.0 bulk download (ATC V)  2026-10-08
+0ad39a64ec861d61d015184a4c5d06e02e5f591690e9f6acd22035c62a87d292  ayvaz_pddi_conservative.csv.bz2  Ayvaz et al. 2015 merged PDDI set (dbmi-pitt/public-PDDI-analysis, CombinedDatasetConservative)  2026-10-09
+d9532aab027039a38f15356840b336ee91e2a7856be7fbba8ded4601d537a77d  openmrs_ddi/interactions.jsonl  DDInter 2.0 full tables via pbiondich/openmrs-ddi-knowledge-base src/ @ commit 7e2bd2c245bd33550ca1b14951d6955767026775  2026-10-11
+187a03207952a299e4c1fe58a79dc27dddc9c413611bcec45145cb6c1c7837ac  openmrs_ddi/drugs.jsonl  DDInter 2.0 full tables via pbiondich/openmrs-ddi-knowledge-base src/ @ commit 7e2bd2c245bd33550ca1b14951d6955767026775  2026-10-11
+b55f8b147a11a6b394f669f3d007253d595f9016005e42f92a689f249e4f1b2a  openmrs_ddi/ddi_knowledge_base.json  OpenMRS DDI KB out/ (drugs table + RxNorm brand names used) @ commit 7e2bd2c245bd33550ca1b14951d6955767026775  2026-10-26
+a7aa10269f02e2cae74eddcd1bcbe0d85f272effe1f2657278056c1b56489e12  pubchem_drugs.json  PubChem PUG REST names/synonyms cache (1,705 of 1,706 drugs)  2026-10-26
