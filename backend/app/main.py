@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes import drugs, interactions
+from app.core import errors
+from app.core.config import settings
+from app.core.request_log import log_requests, setup_logging
+
+setup_logging(settings.LOG_LEVEL)
+
 app = FastAPI(
     title="PharmGraph AI",
     description="AI-Powered Drug–Drug Interaction (DDI) Checker Using Graph Neural Networks",
@@ -8,9 +15,7 @@ app = FastAPI(
 )
 
 # Configure CORS specifically to allow frontend development server
-origins = [
-    "http://localhost:5173",
-]
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +24,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(log_requests)
+errors.register(app)
 
 
 @app.get("/health")
@@ -26,17 +33,5 @@ def health_check():
     return {"status": "ok"}
 
 
-# Placeholder API routes for Commit 3
-@app.get("/api/v1/drugs/search")
-def search_drugs():
-    return {}
-
-
-@app.post("/api/v1/interactions/known")
-def check_known_interactions():
-    return {}
-
-
-@app.post("/api/v1/interactions/predict")
-def predict_interactions():
-    return {}
+app.include_router(drugs.router, prefix="/api/v1")
+app.include_router(interactions.router, prefix="/api/v1")
