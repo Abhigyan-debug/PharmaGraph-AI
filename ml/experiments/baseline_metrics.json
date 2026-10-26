@@ -1,0 +1,28 @@
+{
+  "model": "logistic regression on [x_u || x_v], Morgan r=2, 2048 bits",
+  "seed": 42,
+  "val": {
+    "auroc": 0.8774,
+    "aupr": 0.859,
+    "f1_at_0.5": 0.8126,
+    "pairs": 57416
+  },
+  "val_random": {
+    "auroc": 0.5005,
+    "aupr": 0.5015,
+    "f1_at_0.5": 0.5013,
+    "pairs": 57416
+  },
+  "test": {
+    "auroc": 0.8754,
+    "aupr": 0.8578,
+    "f1_at_0.5": 0.8109,
+    "pairs": 57420
+  },
+  "test_random": {
+    "auroc": 0.5024,
+    "aupr": 0.5008,
+    "f1_at_0.5": 0.5033,
+    "pairs": 57420
+  }
+}
