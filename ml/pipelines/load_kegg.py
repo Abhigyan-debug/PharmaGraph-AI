@@ -1,27 +1,3 @@
-"""Pull DDI severity labels for our drugs from the live KEGG DDI API.
-
-KEGG's DDI data comes from Japanese package inserts and has two labels:
-CI (contraindicated) and P (precaution). Free for academic use through the
-API; redistribution isn't allowed, so the output stays in data/raw/ (gitignored).
-
-KEGG entries don't link to DrugBank any more, so we match by structure:
-    KEGG drug -> PubChem SID (KEGG's own conv list) -> CID -> SMILES
-    TDC drug  -> SMILES (already in the TDC file)
-and compare the first block of the InChIKey of the largest fragment. Taking
-the largest fragment drops counter-ions, so KEGG's "warfarin sodium" (D00564)
-matches TDC's warfarin. The first InChIKey block ignores stereo and
-protonation, so this is a connectivity match, not an exact one.
-
-Structures come from PubChem because it answers in batches of hundreds; KEGG's
-own MOL endpoint takes ten entries per call and was too slow for 12,000 drugs.
-KEGG is only asked for the DDI lists, one drug per call.
-
-Everything is cached in data/raw/kegg_cache/, so a rerun only asks for what's missing.
-
-Usage:
-    python -m ml.pipelines.load_kegg --out data/raw/kegg_severity.parquet
-"""
-
 import argparse
 import json
 import os
@@ -37,11 +13,11 @@ from ml.pipelines import pubchem
 RDLogger.DisableLog("rdApp.*")
 
 KEGG = "https://rest.kegg.jp"
-KEGG_PAUSE = 0.4  # KEGG publishes no limit; this keeps us under ~2 requests/second
+KEGG_PAUSE = 0.4
 
 
 class Refused(Exception):
-    """KEGG kept refusing; stop rather than cache a wrong answer."""
+    pass
 
 
 def kegg_get(path, tries=5):
@@ -75,7 +51,6 @@ def save_cache(path, cache):
 
 
 def kegg_to_sid(kind, cache_dir):
-    """{'D00564': 7847631, ...} from KEGG's conv list, fetched once."""
     path = os.path.join(cache_dir, f"conv_{kind}_pubchem.tsv")
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as f:
@@ -89,7 +64,6 @@ def kegg_to_sid(kind, cache_dir):
 
 
 def sids_to_smiles(sids, cache_dir):
-    """SID -> SMILES of its standardised compound, None when PubChem has no structure."""
     cid_path = os.path.join(cache_dir, "sid_cid.json")
     smi_path = os.path.join(cache_dir, "cid_smiles.json")
     sid_cid, cid_smi = load_cache(cid_path), load_cache(smi_path)
@@ -102,7 +76,7 @@ def sids_to_smiles(sids, cache_dir):
             cids = row.get("CID", [])
             sid_cid[str(row["SID"])] = cids[0] if cids else None
         for s in batch:
-            sid_cid.setdefault(str(s), None)  # PubChem answered but had no compound for it
+            sid_cid.setdefault(str(s), None)
         save_cache(cid_path, sid_cid)
         print(f"  sid->cid {min(start + 500, len(todo))}/{len(todo)}", flush=True)
 
@@ -122,13 +96,12 @@ def sids_to_smiles(sids, cache_dir):
 
 
 def structure_key(smiles):
-    """First InChIKey block of the largest fragment, or None."""
     mol = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
     if mol is None:
         return None
     frags = Chem.GetMolFrags(mol, asMols=True)
     main = max(frags, key=lambda m: m.GetNumHeavyAtoms())
-    if main.GetNumHeavyAtoms() < 2:  # water, ions, single atoms: too ambiguous
+    if main.GetNumHeavyAtoms() < 2:
         return None
     key = Chem.MolToInchiKey(main)
     return key[:14] if key else None
@@ -145,7 +118,7 @@ def map_entries(entry_sid, cache_dir, key_to_db):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tdc", default="data/raw/tdc_ddi_drugbank.tab")
     parser.add_argument("--cache-dir", default="data/raw/kegg_cache")
     parser.add_argument("--out", default="data/raw/kegg_severity.parquet")
@@ -153,7 +126,6 @@ def main():
     os.makedirs(args.cache_dir, exist_ok=True)
     ddi_path = os.path.join(args.cache_dir, "ddi.json")
 
-    # structure key -> DrugBank ID, from TDC's own SMILES
     tdc = pd.read_csv(args.tdc, sep="\t", usecols=["ID1", "ID2", "X1", "X2"])
     tdc_smiles = dict(zip(tdc.ID1, tdc.X1)) | dict(zip(tdc.ID2, tdc.X2))
     keys = defaultdict(set)
@@ -183,8 +155,6 @@ def main():
                 print(f"  ddi {i}/{len(todo)}", flush=True)
         save_cache(ddi_path, ddi)
 
-        # A few partners are KEGG compounds (cpd:C...) rather than drugs; they
-        # include real drugs such as kanamycin and argatroban, so map them too.
         partner_cpds = {line.split("\t")[1].split(":")[-1]
                         for d in mapped for line in ddi.get(d, "").splitlines()
                         if "\tcpd:" in line}
@@ -208,7 +178,7 @@ def main():
             if "CI" in labels:
                 severity = "major"
             elif "P" in labels:
-                severity = "moderate"  # broad "precaution" bucket, see docs/decisions.md
+                severity = "moderate"
             else:
                 continue
             a, b = sorted([a, b])

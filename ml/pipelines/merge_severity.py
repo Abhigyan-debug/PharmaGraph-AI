@@ -1,22 +1,3 @@
-"""Combine every severity source into one row per drug pair.
-
-Sources:
-  DDInter   the full DDInter 2.0 interaction table, as packaged by the OpenMRS
-            DDI knowledge base (DDInter's bulk download only has 8 of its 14
-            ATC groups), joined through ddinter_to_drugbank_map.csv. All
-            160,235 pairs in the official CSVs appear there with the same level.
-  Ayvaz     output of load_ayvaz.py (ANSM, NDF-RT, OSCAR, WorldVistA, ONC, KEGG 2014)
-  KEGG      output of load_kegg.py (live API); skipped if it hasn't been run
-
-Rule (docs/decisions.md, decision 7): when sources disagree the most severe
-level is shown, and every source's own label is kept in severity_raw so
-anyone can see who said what. DDInter's "Unknown" is a real record but not a
-grade, so it only decides the level when no source gives one.
-
-Usage:
-    python -m ml.pipelines.merge_severity --out data/processed/severity_by_pair.parquet
-"""
-
 import argparse
 import json
 import os
@@ -27,7 +8,6 @@ RANK = {"major": 3, "moderate": 2, "minor": 1, "unknown": 0}
 
 
 def ddinter_rows(path, map_path):
-    # each line: ["DDInter1000", "DDInter1001", "Moderate", "<mechanism group>"]
     with open(path, encoding="utf-8") as f:
         ddinter = pd.DataFrame([json.loads(line)[:3] for line in f], columns=["a", "b", "level"])
     id_map = pd.read_csv(map_path).set_index("ddinter_id").drugbank_id
@@ -45,7 +25,7 @@ def ddinter_rows(path, map_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--ddinter", default="data/raw/openmrs_ddi/interactions.jsonl")
     parser.add_argument("--ddinter-map", default="data/raw/ddinter_to_drugbank_map.csv")
     parser.add_argument("--ayvaz", default="data/raw/ayvaz_severity.parquet")
@@ -84,7 +64,6 @@ def main():
     merged.to_parquet(args.out, index=False)
     print(f"wrote {len(merged):,} pairs -> {args.out}")
 
-    # coverage of the TDC interaction graph, the number we report
     tdc = pd.read_csv(args.tdc, sep="\t", usecols=["ID1", "ID2"])
     tdc_pairs = set("__".join(sorted(p)) for p in zip(tdc.ID1, tdc.ID2))
     in_tdc = merged[merged.pair_key.isin(tdc_pairs)]

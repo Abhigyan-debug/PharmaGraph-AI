@@ -1,15 +1,3 @@
-"""Small PubChem PUG REST client shared by the pipeline scripts.
-
-PubChem allows at most 5 requests a second, and it throttles harder when its
-servers are busy. Every response has an X-Throttling-Control header like
-
-    Request Count status: Green (5%), Request Time status: Green (0%), Service status: Black (497%)
-
-The first two describe our own usage, the last one the server's overall load.
-We slow down as soon as any of them leaves Green instead of waiting for a 429,
-which is what got us blocked for over half an hour the first time.
-"""
-
 import re
 import time
 
@@ -17,15 +5,14 @@ import requests
 
 PUG = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 
-# seconds between requests for each status
 PAUSE = {"Green": 0.4, "Yellow": 2.0, "Red": 10.0, "Black": 10.0}
-SERVICE_BUSY_PAUSE = 3.0  # server overloaded but our own usage is fine
+SERVICE_BUSY_PAUSE = 3.0
 
 _pause = PAUSE["Green"]
 
 
 class Throttled(Exception):
-    """PubChem kept refusing. Callers save progress and stop."""
+    pass
 
 
 def _update_pause(header):
@@ -39,7 +26,6 @@ def _update_pause(header):
 
 
 def request(path, data=None, tries=6):
-    """JSON for a PUG REST path, None for 404. Raises Throttled after repeated refusals."""
     url = f"{PUG}/{path}"
     for attempt in range(tries):
         time.sleep(_pause)

@@ -1,20 +1,3 @@
-"""Look up PubChem CID, display name and synonyms for every TDC drug.
-
-TDC only gives DrugBank IDs and SMILES, no names. We need names for the search
-box, and synonyms let us match sources that are keyed by name, such as the
-DDInter drugs that aren't in our ID map.
-
-The CID comes from PubChem's DrugBank cross-reference, which points at the
-record DrugBank itself deposited. EBI's UniChem file maps by structure instead
-and picks a different stereo form for some drugs (tramadol, for one), so we
-don't use it here.
-
-Every answer is cached in the output file; re-running only fetches what's missing.
-
-Usage:
-    python -m ml.pipelines.fetch_pubchem_names --tdc data/raw/tdc_ddi_drugbank.tab --out data/raw/pubchem_drugs.json
-"""
-
 import argparse
 import json
 import os
@@ -23,7 +6,7 @@ import pandas as pd
 
 from ml.pipelines import pubchem
 
-MAX_SYNONYMS = 60  # the long tail is mostly catalogue numbers
+MAX_SYNONYMS = 60
 
 
 def cid_for(drugbank_id):
@@ -33,7 +16,6 @@ def cid_for(drugbank_id):
 
 
 def names_for(cids):
-    """Title and synonyms for a batch of CIDs."""
     ids = ",".join(str(c) for c in cids)
     titles, synonyms = {}, {}
     js = pubchem.request("compound/cid/property/Title/JSON", data={"cid": ids})
@@ -46,7 +28,7 @@ def names_for(cids):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tdc", default="data/raw/tdc_ddi_drugbank.tab")
     parser.add_argument("--out", default="data/raw/pubchem_drugs.json")
     args = parser.parse_args()

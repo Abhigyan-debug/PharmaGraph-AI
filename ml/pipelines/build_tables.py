@@ -1,22 +1,3 @@
-"""Build the two tables the backend loads: drugs and known_interactions.
-
-Inputs are the outputs of the earlier steps:
-    data/raw/tdc_ddi_drugbank.tab              interaction graph (TDC)
-    data/processed/severity_by_pair.parquet    merge_severity.py
-    data/raw/openmrs_ddi/ddi_knowledge_base.json  DDInter names, RxNorm brand names
-    data/raw/kpaths_ddinter_*.json             K-Paths names
-    data/raw/ayvaz_pddi_conservative.csv.bz2   Ayvaz names
-    data/raw/pubchem_drugs.json                fetch_pubchem_names.py
-
-One row in known_interactions is one TDC row, not one pair. 406 pairs appear
-twice in TDC, and every time it's two different interaction types (two
-documented effects), so both are kept. Severity is per pair, so both rows of
-such a pair carry the same severity.
-
-Usage:
-    python -m ml.pipelines.build_tables --out data/processed
-"""
-
 import argparse
 import json
 import os
@@ -34,18 +15,13 @@ DATASET_VERSION = "tdc-ddi-drugbank-dataverse-4139573"
 SEVERITIES = {"major", "moderate", "minor", "unknown"}
 NAME_PRIORITY = {"ddinter": 0, "kpaths": 1, "pubchem": 2, "ayvaz": 3}
 
-# A PubChem synonym worth searching on is a word or two: letters, spaces, hyphens.
-# This drops its codes (UNII-..., CAS numbers, NSC 1234, IUPAC names). RxNorm brand
-# names skip this filter; the OpenMRS build already curated them.
 WORD_LIKE = re.compile(r"^[A-Za-z][A-Za-z \-']{2,39}$")
 MAX_SYNONYMS = 25
-# Longer than this and a "name" is usually a full IUPAC name nobody can read.
 READABLE_NAME = 40
 
 
 def pick_names(drug_ids, ddinter_drugs, kpaths_paths, ayvaz_path, pubchem):
-    """Display name and its source for each DrugBank ID, plus the other names seen."""
-    candidates = defaultdict(list)  # drugbank_id -> [(source, name), ...]
+    candidates = defaultdict(list)
     for d in ddinter_drugs:
         if d.get("drugbank_id"):
             candidates[d["drugbank_id"]].append(("ddinter", d["name"]))
@@ -55,9 +31,6 @@ def pick_names(drug_ids, ddinter_drugs, kpaths_paths, ayvaz_path, pubchem):
         title = entry.get("title")
         if title:
             candidates[db].append(("pubchem", title))
-        # PubChem's first synonym is usually its preferred common name. Only offer it
-        # when the title is a long chemical name, and only if it reads like a word;
-        # a later synonym can be a brand fragment (DB00568 would become "Cinna").
         first = (entry.get("synonyms") or [None])[0]
         if title and len(title) > READABLE_NAME and first and WORD_LIKE.match(first):
             candidates[db].append(("pubchem", first))
@@ -67,20 +40,17 @@ def pick_names(drug_ids, ddinter_drugs, kpaths_paths, ayvaz_path, pubchem):
     chosen, others = {}, {}
     for db in drug_ids:
         names = candidates.get(db, [])
-        # Prefer the plain name over formulations like "Ketorolac (ophthalmic)" and
-        # over long chemical names, then the more trusted source, then the shorter spelling.
         ranked = sorted(names, key=lambda c: (
             "(" in c[1], len(c[1]) > READABLE_NAME, NAME_PRIORITY[c[0]], len(c[1])))
         if ranked:
             chosen[db] = (ranked[0][1], ranked[0][0])
         else:
-            chosen[db] = (db, "drugbank_id")  # no name anywhere; show the ID rather than nothing
+            chosen[db] = (db, "drugbank_id")
         others[db] = {n for _, n in names}
     return chosen, others
 
 
 def clean_synonyms(brands, other_names, display_name):
-    """Brand names first (they're what people type), then word-like alternates."""
     seen = {normalize(display_name)}
     kept = []
     for n in list(brands) + [n for n in other_names if WORD_LIKE.match(n)]:
@@ -96,8 +66,6 @@ def clean_synonyms(brands, other_names, display_name):
 def build_drugs(tdc, chosen, others, brands, pubchem):
     smiles = dict(zip(tdc.ID1, tdc.X1)) | dict(zip(tdc.ID2, tdc.X2))
     rows = []
-    # Sorted DrugBank order means drug_id order and drugbank_id order always agree,
-    # so a pair sorted by either key comes out the same way round.
     for i, db in enumerate(sorted(smiles), start=1):
         name, name_source = chosen[db]
         entry = pubchem.get(db, {})
@@ -132,7 +100,6 @@ def build_interactions(tdc, drugs, severity):
     t["drug_a_id"] = a.where(a < b, b)
     t["drug_b_id"] = b.where(a < b, a)
     t["pair_key"] = t.drug_a_id + "__" + t.drug_b_id
-    # The sentence keeps TDC's own direction: #Drug1 is always ID1.
     t["description"] = [
         m.replace("#Drug1", name[d1]).replace("#Drug2", name[d2])
         for m, d1, d2 in zip(t.Map, t.ID1, t.ID2)
@@ -151,7 +118,6 @@ def build_interactions(tdc, drugs, severity):
 
 
 def check(drugs, interactions):
-    """The rules from docs/data-dictionary.md. Any failure stops the build."""
     problems = []
     if not drugs.drug_id.is_unique:
         problems.append("drug_id is not unique")
@@ -173,7 +139,7 @@ def check(drugs, interactions):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tdc", default="data/raw/tdc_ddi_drugbank.tab")
     parser.add_argument("--severity", default="data/processed/severity_by_pair.parquet")
     parser.add_argument("--ddinter-kb", default="data/raw/openmrs_ddi/ddi_knowledge_base.json")
@@ -190,8 +156,6 @@ def main():
         with open(args.pubchem, encoding="utf-8") as f:
             pubchem = json.load(f)
 
-    # Only the drugs table of the knowledge base is used here; its derived
-    # interaction tier is an inference and never used (decision 13).
     with open(args.ddinter_kb, encoding="utf-8") as f:
         kb_drugs = json.load(f)["drugs"]
     brands = defaultdict(set)

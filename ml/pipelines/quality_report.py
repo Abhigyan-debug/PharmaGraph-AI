@@ -1,12 +1,3 @@
-"""Write docs/data-quality-report.md from the current data files.
-
-Every number in the report is computed here, so the report can't drift from
-the data: rerun this after any pipeline change instead of editing the .md.
-
-Usage:
-    python -m ml.pipelines.quality_report --out docs/data-quality-report.md
-"""
-
 import argparse
 import datetime
 import hashlib
@@ -15,8 +6,6 @@ import os
 
 import pandas as pd
 
-# Sources added in the order the coverage was built up (docs/decisions.md 6-13).
-# "Kegg" is the 2014 snapshot inside the Ayvaz set, "KEGG" the live API.
 AYVAZ_SOURCES = {"FrenchDB", "Kegg", "NDF-RT", "OSCAR", "World-Vista",
                  "ONC-HighPriority", "ONC-NonInteruptive"}
 
@@ -99,7 +88,6 @@ def severity_section(interactions, drugs):
     pairs = interactions.drop_duplicates("pair_key")
     n = len(pairs)
     graded = pairs[pairs.severity_display != "unknown"]
-    # Which sources actually grade each pair; DDInter's "Unknown" is a record, not a grade.
     tags = graded.severity_raw.str.split("; ")
     graders = tags.apply(lambda ts: {t.split(": ")[0] for t in ts if t != "DDInter: Unknown"})
 
@@ -139,7 +127,7 @@ def conflicts_line(severity_by_pair, drugs, interactions):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tdc", default="data/raw/tdc_ddi_drugbank.tab")
     parser.add_argument("--drugs", default="data/processed/drugs.parquet")
     parser.add_argument("--interactions", default="data/processed/known_interactions.parquet")
