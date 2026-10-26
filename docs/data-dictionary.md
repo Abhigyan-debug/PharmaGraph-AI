@@ -10,22 +10,27 @@ so we can hold external identifiers unchanged. `null` means we don't know, not z
 
 ## Drug
 
-One row per medicine. Written by `normalize_ids.py` to
-`data/processed/drugs_normalized.parquet`, loaded into the `drugs` table.
+One row per medicine. Written by `ml/pipelines/build_tables.py` to
+`data/processed/drugs.parquet`, loaded into the `drugs` table.
 
 | field | type | notes |
 |---|---|---|
-| `drug_id` | str | our own key, `pg_` + 6 digits, e.g. `pg_000123`. Primary key everywhere. Never reused. |
+| `drug_id` | str | our own key, `pg_` + 6 digits, e.g. `pg_000123`. Primary key everywhere. Never reused. Handed out in sorted DrugBank order, so sorting by `drug_id` and by `drugbank_id` always agree |
 | `name` | str | what the UI shows, e.g. `Warfarin` |
 | `name_normalized` | str | lowercased search key, indexed |
-| `synonyms` | list[str] | brand names and alternates. Empty list if none, not null |
+| `name_source` | str | where `name` came from: `ddinter` / `kpaths` / `pubchem` / `ayvaz`, or `drugbank_id` when no source had a name |
+| `synonyms` | list[str] | RxNorm brand names first, then word-like alternates from PubChem and the other sources; at most 25. Empty list if none, not null |
 | `drugbank_id` | str or null | e.g. `DB00682`. Null if the drug came from somewhere else |
-| `pubchem_cid` | str or null | stored as string even though it's numeric |
+| `pubchem_cid` | str or null | stored as string even though it's numeric. Null when PubChem had no match |
 | `smiles` | str or null | needed for ML. No SMILES, no features |
 | `supported` | bool | searchable and selectable in the UI |
 | `supported_for_ml` | bool | SMILES parses in RDKit *and* the drug is in the graph |
-| `source` | str | `drugbank` / `openfda` / `pubchem` / `manual` |
-| `dataset_version` | str | e.g. `drugbank-5.1.10`, ties back to checksums.txt |
+| `source` | str | `tdc` for every drug today |
+| `dataset_version` | str | `tdc-ddi-drugbank-dataverse-4139573`, ties back to checksums.txt |
+
+Having a SMILES string isn't the same as having a structure. One TDC drug, DB11630, has a
+SMILES with a syntax error that RDKit rejects, so it's `supported_for_ml = false`: its
+documented interactions are served, but it gets no prediction.
 
 Two separate `supported` flags on purpose: a drug can be perfectly fine to look up known
 interactions for while still being useless to the model. Merging them into one flag would hide
@@ -48,28 +53,32 @@ maps to exactly one `drug_id`; that's the check that gates commit 8.
 
 ## KnownInteraction
 
-Documented interactions only. Nothing from the model goes in here.
+Documented interactions only. Nothing from the model goes in here. Written by
+`ml/pipelines/build_tables.py` to `data/processed/known_interactions.parquet`.
 
 | field | type | notes |
 |---|---|---|
-| `interaction_id` | str | `ddi_` + digits |
+| `interaction_id` | str | `ddi_` + 6 digits |
+| `pair_key` | str | `"__".join(sorted([a, b]))` over the two `drug_id`s |
 | `drug_a_id` | str | FK to drugs. Always the smaller of the two IDs |
 | `drug_b_id` | str | always the larger |
-| `pair_key` | str | `"__".join(sorted([a, b]))`. Unique. This is what kills duplicates |
-| `source` | str | `drugbank` / `openfda` / `twosides` / `manual` — always shown to the user |
-| `severity_raw` | str or null | exactly what the source wrote. Never edited |
-| `severity_display` | str | our mapped enum, see below |
-| `description` | str or null | source text, shown as-is |
+| `interaction_type` | int | TDC's interaction type, 1–86. Each type has one sentence template |
+| `description` | str | TDC's sentence with the drug names filled in, e.g. "Aspirin may increase the anticoagulant activities of Warfarin." Keeps TDC's own direction |
+| `source` | str | `tdc` — where the interaction itself comes from. Always shown to the user |
+| `severity_display` | str | our mapped enum, see below. Same on every row of a pair |
+| `severity_raw` | str or null | every source's own label, e.g. `DDInter: Major; FrenchDB: PC`. Never edited. Null when no source has the pair |
+| `severity_sources` | str or null | the sources behind `severity_raw`, comma-separated |
 | `dataset_version` | str | same as on Drug |
 
-The `pair_key` thing is worth being careful about. DrugBank lists interactions from both
-drugs' perspectives, so you get `(A,B)` and `(B,A)` as separate records saying the same thing.
-Sorting the IDs and joining gives one canonical key, and a unique constraint on it means the
-duplicates collapse on insert instead of us having to remember to dedupe at query time.
+The key is `(pair_key, interaction_type)`, not `pair_key` alone. TDC lists 406 pairs twice,
+and we checked every one: it's always two different interaction types, two documented
+effects of the same pair (289 in the same direction, 117 reversed). Collapsing them to one row
+would throw a real interaction away, so the table has 191,808 rows over 191,402 pairs.
 
-Things that should always be true, checked in the commit 9 quality report: `drug_a_id` sorts
-before `drug_b_id`, a drug never interacts with itself, `pair_key` is unique, and both IDs
-exist in `drugs`.
+Things that should always be true, checked by `build_tables.py` every time it runs:
+`drug_a_id` sorts before `drug_b_id`, a drug never interacts with itself,
+`(pair_key, interaction_type)` is unique, both IDs exist in `drugs`, no description still has
+a `#Drug` placeholder, and `severity_display` is one of the four allowed values.
 
 ## GraphEdge
 
@@ -127,27 +136,33 @@ Disclaimer on everything:
 
 ## Severity mapping
 
-Lives in `backend/app/services/severity.py` (commit 13) with unit tests. Anything not in this
-table becomes `unknown`.
+Done in the pipeline: `load_ayvaz.py` (`SEVERITY_MAP`), `load_kegg.py` and `merge_severity.py`.
+A backend copy for runtime checks comes with commit 13. Anything not in this table becomes
+`unknown`. These are the labels that actually appear in our sources:
 
-| we show | source strings |
-|---|---|
-| `major` | Major, High, Serious |
-| `moderate` | Moderate, Medium |
-| `minor` | Minor, Low |
-| `unknown` | null, empty, Unknown, anything unrecognised |
+| source | `major` | `moderate` | `minor` |
+|---|---|---|---|
+| DDInter | Major | Moderate | Minor |
+| French ANSM | CI, AD | PE | PC |
+| WorldVistA | Contraindication, Not recommended | Precaution for use | Take into account |
+| NDF-RT | Critical | Significant | — |
+| OSCAR | 3 | 2 | 1 |
+| KEGG (2014 and live) | CI | P | — |
+| ONC lists | high-priority | — | non-interruptive |
+
+DDInter's own `Unknown` stays `unknown`. Why each row is mapped the way it is, KEGG's P being
+an approximation in particular, is in `docs/decisions.md` (decisions 7, 9 and 10).
 
 Rules around it:
 
-- Never upgrade a severity. Unmapped goes to `unknown`, not to a guess.
-- "Contraindicated" only appears if `severity_raw` literally contains it.
+- Never show a level no source gave. Unmapped goes to `unknown`, not to a guess. When sources
+  disagree, the most severe of *their* levels is shown (decision 7).
+- "Contraindicated" only appears if `severity_raw` has a contraindication label: ANSM or KEGG
+  `CI`, or WorldVistA `Contraindication`.
 - Keep `severity_raw` on the record even when it doesn't map, so we can audit the decision
   later or extend the table.
 - **Predictions never carry a severity at all.** The model answers "is there an interaction",
   not "how bad is it". Putting a severity on a model output would be making it up.
-
-TODO: the source strings above are from the DrugBank docs. Once we actually have the export,
-check what values really appear and update this — there are probably variants we haven't seen.
 
 ## Confidence bands
 
