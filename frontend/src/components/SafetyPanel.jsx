@@ -1,43 +1,45 @@
 function SafetyPanel() {
   return (
-    <section className="panel safety-panel">
-      <div className="section-header">
-        <h3>Limitations</h3>
-      </div>
+    <article className="sheet reading" aria-labelledby="limits-heading">
+      <h1 id="limits-heading">Limitations</h1>
+      <p className="lead">
+        PharmGraph AI is a student decision-support prototype. It does not replace a doctor or
+        pharmacist, and nothing here is medical advice.
+      </p>
 
-      <div className="info-grid">
-        <div className="info-box warning-box">
-          <h4>Not medical advice</h4>
-          <p>
-            This is a student decision-support prototype. It does not replace a doctor or pharmacist.
-          </p>
-        </div>
+      <h2>No record is not “safe”</h2>
+      <p>
+        Interactions come from the TDC DrugBank DDI set: 191,402 pairs over 1,706 drugs. A pair that
+        is missing from it may still interact, and a drug that isn’t in it can’t be checked.
+      </p>
 
-        <div className="info-box">
-          <h4>No record is not “safe”</h4>
-          <p>
-            Interactions come from the TDC DrugBank DDI set (1,706 drugs). A pair missing from it may
-            still interact.
-          </p>
-        </div>
+      <h2>Severity is partial</h2>
+      <p>
+        About 45% of documented pairs (85,756) have a severity from DDInter 2.0, KEGG or the Ayvaz et
+        al. merged set. The rest show “Severity not reported”; we never guess a level. When sources
+        disagree, the most severe level is shown and every source’s own label is listed under the
+        result.
+      </p>
 
-        <div className="info-box">
-          <h4>Severity is partial</h4>
-          <p>
-            About 45% of documented pairs have a severity from DDInter, KEGG or the Ayvaz et al. merged
-            set. The rest show “Severity not reported by our sources”; we never guess one.
-          </p>
-        </div>
+      <h2>“Contraindicated” comes only from a source</h2>
+      <p>
+        A pair is marked contraindicated only when a source labels it that way (for example FrenchDB
+        or KEGG “CI”). A major interaction is not automatically a contraindication.
+      </p>
 
-        <div className="info-box">
-          <h4>Predictions are unconfirmed</h4>
-          <p>
-            GNN results, once the model is trained, are shown separately, carry no severity, and have not
-            been checked by anyone.
-          </p>
-        </div>
-      </div>
-    </section>
+      <h2>What your account stores</h2>
+      <p>
+        Your email, your password as a scrypt hash (never the password itself), your sign-in sessions, and for
+        each check the drugs you chose and when. Nothing else about you or your health. Only you can see your
+        checks. Delete any of them, or your whole account with everything in it, from the History page.
+      </p>
+
+      <h2>Predictions are unconfirmed</h2>
+      <p>
+        Results from the graph neural network, once it is trained, are shown in their own section,
+        carry no severity, and have not been checked by anyone.
+      </p>
+    </article>
   );
 }
 
