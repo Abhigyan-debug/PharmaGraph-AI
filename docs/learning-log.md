@@ -2,6 +2,220 @@
 
 What was built, how it works, and the concepts behind it. Newest first.
 
+## 2026-10-30 — Redesign: intro, mega-menu, drug pages, identifier mapping, nested graph
+
+### Backend
+- `ml/pipelines/identifiers.py`: `groupby(...).agg(lambda ids: sorted(set(ids)))` collects every id
+  for a key into one sorted list. `str.removeprefix("dr:")` strips KEGG's prefix. `Chem.MolToInchi`
+  and `Chem.MolToInchiKey` compute the standard identifiers from the molecule.
+- `services/catalog.py`: `PARTNERS_SQL` uses PostgreSQL's `DISTINCT ON (partner_id)` with
+  `ORDER BY partner_id, rank`, which keeps the first (most severe) row per partner.
+  `array_position(ARRAY['major',...], severity)` turns a severity into its rank. The `UNION` in
+  `interaction_counts` counts each pair once per drug, whichever side the drug is on.
+- `services/auth.py` `optional_user`: wraps `current_user` and returns `None` instead of raising,
+  for endpoints that work either way.
+- `GZipMiddleware(minimum_size=1024)`: compresses only responses big enough to be worth it.
+
+### Frontend
+- `App.jsx` `currentRoute()`: the regex `^#\/([^/]*)\/?(.*)$` splits `#/drugs/pg_000472` into the
+  page (`drugs`) and the id (`pg_000472`).
+- `Brand.jsx`: the intro's logo and the header's logo use the same `layoutId`. When the intro
+  unmounts and the header logo mounts, Motion measures both boxes and animates between them.
+  `AnimatePresence` keeps the intro on screen long enough to play its `exit` fade.
+- `Landing.jsx` `usePointer` + `Layer`: `useMotionValue` holds the pointer position without
+  re-rendering React; `useSpring` smooths it; `useTransform(sx, (v) => v * depth * 46)` turns it
+  into each layer's offset, so deeper layers move further. `PhoneMock` uses `useScroll` +
+  `useTransform` so the phone's rotation follows the page's scroll position.
+- `CountUp`: `animate(0, value, { onUpdate })` writes the number straight into the DOM node, so
+  counting doesn't re-render React 60 times a second.
+- `SpotlightCard`: the pointer position goes into CSS custom properties (`--mx`, `--my`) that a
+  `radial-gradient` reads, which gives the light that follows the cursor.
+- `KnowledgeGraph.jsx`: modules and tables are data; positions are computed from whether a module
+  is open. `motion.circle animate={{ r }}` and `motion.path animate={{ d }}` morph the shapes;
+  the path always has the same commands (`M … Q …`), which is what lets Motion interpolate it.
+  Dragging changes a `{x, y, k}` view state applied to one `motion.g`.
+- `Molecule3D`: `nomouse` stops 3Dmol listening to the mouse on decorative models.
+
+**Things learned while building it**
+- A stitched full-page screenshot never scrolls, so scroll-triggered reveals look blank in it.
+  Checking each section's computed opacity after scrolling to it showed they all reach 1.
+- 3Dmol zooms on the mouse wheel: over a full-width hero that swallowed page scrolling.
+- Showing a new label while the old molecule is still loaded looked like a data error; clearing
+  the old one first fixed it.
+
+## 2026-10-30 — Landing page, accounts, history, rate limits, security
+
+### How a signed-in request travels
+
+```
+browser ──POST /api/v1/auth/login {email, password}──> login(): scrypt-hash the password, compare
+        <──Set-Cookie: pg_session=<random token>; HttpOnly; SameSite=Lax── start_session(): store SHA-256(token)
+browser ──GET /api/v1/drugs/search (cookie sent automatically)──> RateLimit → current_user() → search
+```
+
+### Backend
+
+- `services/auth.py`
+  - `hash_password()`: `secrets.token_bytes(16)` is the salt. `hashlib.scrypt(...)` mixes
+    password and salt with N=2^17 rounds over 128 MiB. The result string keeps N, r, p and the
+    salt, so `password_matches()` can redo the same hash and compare.
+  - `hmac.compare_digest(a, b)` compares in constant time. A normal `==` stops at the first
+    different character, and the time difference can leak how much matched.
+  - `DUMMY_HASH`: when the email doesn't exist we still hash, so the answer takes as long as for
+    a wrong password.
+  - `start_session()`: `secrets.token_urlsafe(32)` makes 32 random bytes; only its SHA-256 goes in
+    the database. `response.set_cookie(..., httponly=True, samesite="lax", secure=settings.HTTPS)`.
+  - `current_user()` is a FastAPI *dependency*: `Depends(current_user)` in a route runs it first;
+    if it raises 401 the route body never runs. FastAPI reuses one `get_db()` per request, so the
+    route and the dependency share a database session.
+- `services/history.py`: `delete(...).where(SavedCheck.id == check_id, SavedCheck.user_id == user_id)`
+  deletes only your own row; `.rowcount` says whether anything matched, and 0 becomes 404.
+- `core/rate_limit.py`: a class with `__call__` can be used like a function, so
+  `Depends(AUTH_LIMIT)` works. `deque` drops old times from the left in O(1); the window keeps
+  only the last 60 seconds. `RateLimit.hits` is a class attribute, one dict shared by every limit,
+  which is why the tests can clear it in one line.
+- `core/security.py`: an HTTP middleware wraps every request: it can refuse before the route runs
+  (403, 413) and add headers after. `urlsplit(origin).netloc` gives `host:port` to compare with the
+  `Host` header.
+- `schemas.py`: `Literal[True]` accepts only `true`, so registering without the consent box is a
+  422. `field_validator(..., mode="before")` runs before the pattern check, so `" A@B.com "` is
+  trimmed and lowercased first.
+- `seed.py`: `drop_all(engine, tables=[...])` drops only the listed tables.
+
+### Frontend
+
+- `api.js`: `onSignedOut(handler)` stores one callback; `request()` calls it whenever the server
+  answers `not_signed_in`. One place handles an expired session for the whole app.
+- `App.jsx`: `user` has three states. `undefined` means still asking the server, `null` means
+  signed out, an object means signed in. Private routes render the sign-in form when `user` is
+  `null`, so after signing in the same URL shows the page you wanted. `forget()` clears the
+  selection and the last report on sign-out, for shared computers.
+- `AuthForm.jsx`: `autoComplete="new-password"` / `"current-password"` lets password managers
+  help; `required` and `minLength` give instant browser checks, and the API checks again.
+- `Landing.jsx`: `useReveal()` creates one `IntersectionObserver` and adds `shown` to each
+  `.reveal` element when it enters the screen, then stops watching it. `MoleculeShowcase` changes
+  `index` every 8 s with `setInterval` (not when the OS asks for reduced motion) and gives
+  `Molecule3D` a new `key`, so React builds a fresh viewer for each molecule.
+- `styles.css`: `.tilt-card:hover { transform: perspective(800px) rotateX(4deg) rotateY(-5deg) }`
+  is the 3D tilt; `transition` animates it.
+- `vite.config.js`: a small Vite plugin with `apply: 'build'` and `transformIndexHtml` adds the CSP
+  `<meta>` to the built page only.
+
+**Things learned while building it**
+
+- The first browser run failed with 403: Vite's string proxy shorthand sets `changeOrigin: true`,
+  which rewrites `Host`, so the origin check thought the page was another site. Tests with
+  `TestClient` couldn't catch it; only the real browser path did.
+- The scrypt cost was measured at 1.2 s per hash, not the 0.3 s first guessed. Measure before
+  writing numbers down.
+
+## 2026-10-29 — Molecule structures (2D/3D), interaction map, dark theme
+
+### Backend: `GET /api/v1/drugs/{drug_id}/structure`
+
+`services/structure.py`:
+
+- `Chem.MolFromSmiles(smiles)` turns the SMILES text into an RDKit molecule object, or `None`
+  if it can't be read. `None` (or an unknown `drug_id`) becomes a 404 with
+  `error: "structure_not_found"`, through the same `HTTPException(detail={...})` shape
+  `interactions.py` uses.
+- `rdMolDescriptors.CalcMolFormula(mol)` gives the formula (`C19H16O4`), `Descriptors.MolWt(mol)`
+  the average molecular weight in g/mol, `mol.GetNumHeavyAtoms()` the count of non-hydrogen atoms.
+- `draw_svg()`: `MolDraw2DSVG(420, 320)` is a drawing canvas that outputs SVG text.
+  `SetDarkMode` switches to light lines on dark; `clearBackground = False` removes the black
+  rectangle so the card's own background shows through. `DrawMolecule` computes 2D positions and
+  draws; `FinishDrawing` + `GetDrawingText` returns the SVG string.
+- `molblock` and `note_3d` are read from the `drugs` row: nothing 3D is computed here.
+- In the route, `/{drug_id}/structure` is a *path parameter*: FastAPI takes whatever is in that
+  position of the URL and passes it to the function as `drug_id`.
+
+### Pipeline: `ml/pipelines/conformers.py`
+
+- `Chem.AddHs(mol)`: SMILES leaves hydrogens implicit; 3D needs them as real atoms.
+- `ETKDGv3()` holds the embedding settings. `randomSeed = 42` makes the result repeatable.
+  `maxIterations = 20` caps the attempts. `enforceChirality` says whether the 3D shape must match
+  the `@`/`@@` stereo tags.
+- `EmbedMolecule(mol, params)` returns `0` on success, `-1` on failure.
+- `MMFFOptimizeMolecule(mol)` relaxes bond lengths and angles towards a low-energy shape.
+- `Chem.MolToMolBlock(mol)` writes atoms with x, y, z and the bond list as text.
+- `Pool().map(conformer, smiles, chunksize=4)`: `multiprocessing` starts one worker per CPU
+  core and splits the list between them. `if __name__ == "__main__"` is required on Windows,
+  where each worker re-imports the file.
+
+**Things learned while building it**
+
+- Embedding time doesn't follow size. Quinine, 24 heavy atoms, took 62.8 s, because the `[N@]`
+  stereo tag on its bridgehead nitrogen can't be satisfied, so RDKit kept retrying. Measuring
+  all 1,706 drugs found this; testing three examples wouldn't have.
+- Slow, unpredictable work belongs offline. A web request should only read.
+- `maxIterations` wasn't enough on its own: the first full run hung on one molecule, and
+  `Pool.map` waits for every task. `build_all()` uses `pool.imap(...)` and
+  `next(timeout=60)`; on a timeout it leaves the `with Pool()` block (which kills the workers),
+  records the molecule as 2D only and starts a new pool after it. It caught sodium
+  stibogluconate nonahydrate.
+
+### Frontend
+
+- `Molecule3D.jsx`: `useRef` gives a handle on the `<div>` that 3Dmol draws into. `useEffect`
+  runs after React has put that div on the page. `import('3dmol')` is a *dynamic import*: it
+  returns a Promise and makes Vite split the library into its own file, downloaded only now.
+  The function returned from `useEffect` is the *cleanup*: it stops the spin and empties the
+  div when the drug changes or the page is left, so WebGL canvases don't pile up. `cancelled`
+  covers the case where the user leaves before the import finishes.
+  `matchMedia('(prefers-reduced-motion: reduce)')` reads the OS motion setting.
+- `MoleculePanel.jsx`: fetches the structure whenever `activeId` changes. `AbortController`
+  cancels the previous request if the user clicks another drug quickly, so an old answer can't
+  overwrite a newer one. The 2D SVG goes into an `<img>` as a `data:` URL instead of being
+  inserted as HTML (`dangerouslySetInnerHTML`), so no markup from the response ever runs in the
+  page.
+- `InteractionMap.jsx`: node *i* of *n* sits at angle `-π/2 + i·2π/n`, i.e. at
+  `(cx + r·cos θ, cy + r·sin θ)`, starting at the top. Interactions arrive sorted worst-first,
+  so the first one seen per pair sets that line's colour; they are drawn in reverse so the worst
+  lines end up on top. `<title>` inside an SVG element is its hover tooltip.
+- `ResultsPanel.jsx`: `activeId` is *lifted state*. It lives in the parent so that clicking a
+  node in the map and clicking a chip in the molecule panel change the same value.
+- CSS: the colours are custom properties (`--major`, `--paper`...), so the dark theme was mostly
+  new token values, and `@media print` sets them back to dark-on-white. `.note` uses
+  `--sev` and `border-left: 3px solid var(--sev)` so one rule colours every severity.
+  `stroke-dasharray` / `stroke-dashoffset` with a keyframe animate the map lines "drawing in".
+  `backdrop-filter: blur()` gives the frosted header.
+
+## 2026-10-26 — Frontend redesign
+
+**Why.** The first version was a dark gradient template with cards and pills that could belong
+to any app. The redesign treats a check as a prescription under review: medicines are numbered
+lines on one white sheet, and each pair gets a note with its grade on the left and the source
+under it. Light theme, because clinical tools are used in bright rooms and the demo runs on a
+projector. Product facts and audiences are in `docs/PRODUCT.md`.
+
+**Design tokens.** All colours live as CSS custom properties on `:root` (`--ink`, `--rule`,
+`--blue`, `--major`...). `var(--blue)` reads one, so changing a colour is one edit.
+
+**Severity by shape, not only colour.** `SeverityMark` in `ResultsPanel.jsx` draws a small SVG:
+filled circle for major, half-filled for moderate, outline for minor, dashed for not reported.
+The word is always next to it, so the grade survives colour blindness and black-and-white print.
+
+**Worst first.** `rank()` sorts contraindicated pairs first, then major → moderate → minor →
+unknown. The data isn't changed, only the order on screen.
+
+**Combobox search.** The input has `role="combobox"`, the list `role="listbox"` and each result
+`role="option"`; `aria-activedescendant` tells screen readers which option the arrow keys are on.
+↑/↓ move, Enter adds, Escape clears. `onMouseDown` + `preventDefault()` adds a drug without the
+input losing focus first.
+
+**`display: contents`** on the source rows lets each `<dt>`/`<dd>` pair sit directly in the
+parent grid, so the labels line up in one column.
+
+**Report download.** "Download PDF" calls `window.print()`; the browser's "Save as PDF" makes
+the file. An `@media print` block in `styles.css` hides the nav and buttons, shows the
+`.print-only` header and footer, and `break-inside: avoid` keeps one interaction from splitting
+across pages. `document.title` is set for a moment first, because browsers use it as the PDF's
+file name. No PDF library is needed.
+
+**Search ranking.** `ORDER BY name_prefix DESC, prefix_hit DESC, score DESC` in
+`services/drugs.py`: a drug whose own name starts with the query now beats one that only
+matched through a brand name.
+
 ## 2026-10-26 — Fingerprints, edge split, graph, baseline (commits 19–22)
 
 **Fingerprints (`ml/pipelines/featurize.py`).** `rdFingerprintGenerator.GetMorganGenerator(radius=2,

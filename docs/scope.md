@@ -35,11 +35,16 @@ enough notes that someone could rebuild our results.
 
 ## Product boundaries
 
-Two things stay out permanently, not just in v1. PharmGraph AI does not prescribe and does not
-suggest dosages — it reports what the sources say and what the model scores, and the clinician
-decides. And it stores nothing about a patient: no login, no accounts, no history. The only
-thing a user ever sends us is a list of drug IDs, so there is no patient data to protect in
-the first place.
+PharmGraph AI does not prescribe and does not suggest dosages — it reports what the sources say
+and what the model scores, and the clinician decides. That stays out permanently.
+
+Accounts (changed 2026-10-30, decisions 17 and 21). The first version stored nothing about
+anyone. Now anyone can try a check on the landing page, unsaved; the full checker, history, drug
+pages and research pages need an account, and a signed-in user's checks are saved to their history. What is stored is
+kept to the minimum: email, a scrypt hash of the password, sign-in sessions, and for each check
+the drug IDs and the time. No names, ages, conditions or doses. Users agree to the history when
+they register, only they can see it, and they can delete one check or their whole account at any
+time. A saved medicine list is health data, so this is personal data we now have to protect.
 
 ## Future scope
 

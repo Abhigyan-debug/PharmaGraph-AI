@@ -23,6 +23,13 @@ One row per medicine. Written by `ml/pipelines/build_tables.py` to
 | `drugbank_id` | str or null | e.g. `DB00682`. Null if the drug came from somewhere else |
 | `pubchem_cid` | str or null | stored as string even though it's numeric. Null when PubChem had no match |
 | `smiles` | str or null | needed for ML. No SMILES, no features |
+| `molblock` | str or null | 3D model from `ml/pipelines/conformers.py` (MolBlock text, hydrogens included). Null when the molecule has over 60 heavy atoms or RDKit can't embed it. Loaded by `seed.py` from `conformers.parquet`, not part of `drugs.parquet` |
+| `conformer_note` | str or null | why there's no 3D model, or that its stereochemistry wasn't enforced. Null for an ordinary model |
+| `ddinter_ids` | list[str] or null | DDInter ids linked to this drug's DrugBank id (`ddinter_to_drugbank_map.csv`); a list because 97 drugs have several. From `ml/pipelines/identifiers.py` |
+| `kegg_ids` | list[str] or null | KEGG DRUG ids (`D08682`), matched through KEGG's PubChem SID → CID. 1,423 drugs |
+| `inchi`, `inchikey` | str or null | computed by RDKit from `smiles`; null for the 5 SMILES that give no InChI |
+| `mesh_id` | str or null | MeSH record the description came from (`D014859` for warfarin; `C…` for supplementary chemical records) |
+| `description` | str or null | MeSH definition, matched by our name, then PubChem's title, then synonyms (`ml/pipelines/descriptions.py`). ALL-CAPS cross-reference words lowercased; nothing else changed. Search results carry its first sentence as `summary` |
 | `supported` | bool | searchable and selectable in the UI |
 | `supported_for_ml` | bool | SMILES parses in RDKit *and* the drug is in the graph |
 | `source` | str | `tdc` for every drug today |
@@ -79,6 +86,24 @@ Things that should always be true, checked by `build_tables.py` every time it ru
 `drug_a_id` sorts before `drug_b_id`, a drug never interacts with itself,
 `(pair_key, interaction_type)` is unique, both IDs exist in `drugs`, no description still has
 a `#Drug` placeholder, and `severity_display` is one of the four allowed values.
+
+## Accounts: `users`, `user_sessions`, `saved_checks`
+
+Personal data (decision 17). Created by `seed.py`'s `create_all`, never dropped by it.
+
+| table.field | type | notes |
+|---|---|---|
+| `users.id` | int | primary key |
+| `users.email` | text, unique | trimmed and lowercased before saving |
+| `users.password_hash` | text | `scrypt$N$r$p$salt_hex$hash_hex`; the password itself is never stored |
+| `users.created_at` | timestamptz | set by the database |
+| `user_sessions.token_hash` | char(64), primary key | SHA-256 of the cookie's token, not the token |
+| `user_sessions.user_id` | int | → `users.id`, deleted with the user |
+| `user_sessions.expires_at` | timestamptz | 7 days after sign-in (`SESSION_DAYS`); expired rows are cleared at each sign-in |
+| `saved_checks.id` | int | primary key |
+| `saved_checks.user_id` | int | → `users.id`, deleted with the user |
+| `saved_checks.drug_ids` | `drug_id[]` | the medicines checked, in the order chosen; no foreign key to `drugs` |
+| `saved_checks.created_at` | timestamptz | set by the database |
 
 ## GraphEdge
 

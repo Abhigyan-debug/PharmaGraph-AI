@@ -61,6 +61,9 @@ Then create `.env` in the repo root (Git ignores it) with:
 DATABASE_URL=postgresql+psycopg://pharmgraph:<password>@localhost:5432/pharmgraph
 ```
 
+When the site is served over HTTPS, also set `HTTPS=true` (marks the session cookie `Secure`
+and turns on HSTS). Leave it unset for local `http://` development, or sign-in won't stick.
+
 ## Data pipeline
 
 The raw files go in `data/raw/`; `data/checksums.txt` lists every file and its source, and
@@ -75,6 +78,9 @@ The raw files go in `data/raw/`; `data/checksums.txt` lists every file and its s
 .venv\Scripts\python.exe -m ml.pipelines.build_tables
 .venv\Scripts\python.exe -m ml.pipelines.quality_report
 .venv\Scripts\python.exe -m ml.pipelines.featurize
+.venv\Scripts\python.exe -m ml.pipelines.conformers
+.venv\Scripts\python.exe -m ml.pipelines.identifiers
+.venv\Scripts\python.exe -m ml.pipelines.descriptions
 .venv\Scripts\python.exe -m ml.graph.split_edges
 .venv\Scripts\python.exe -m ml.graph.build_graph
 .venv\Scripts\python.exe -m ml.models.baseline_sklearn
@@ -91,6 +97,13 @@ cd backend
 ..\.venv\Scripts\python.exe -m app.seed
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
+
+`seed` rebuilds only the drug tables; accounts and saved checks survive it. It needs
+`conformers.parquet`, `identifiers.parquet` and `descriptions.parquet`, so run those pipeline
+steps first (`descriptions` asks NLM's MeSH service and caches answers in `data/raw/mesh_cache.json`). Restart
+the API after a reseed so `/stats` is recomputed. If `--reload` stops
+picking up changes on Windows (the log says "Reloading..." and nothing else), stop and start
+uvicorn.
 
 API docs at http://127.0.0.1:8000/docs. In another terminal:
 

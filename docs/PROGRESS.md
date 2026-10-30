@@ -29,6 +29,38 @@ but not yet committed; they count as done once pushed.
 | 21 | Abhigyan | Edge split | Done | `ml/graph/split_edges.py` → `edge_split.npz`, 70/15/15, 1:1 negatives, seed 42, no pair in two parts |
 | 22 | Abhigyan | Logistic regression baseline | Done | `ml/models/baseline_sklearn.py` → `ml/experiments/baseline_metrics.json`; test AUPR 0.858 (random 0.501) |
 
+## Outside the commit plan (2026-10-29)
+
+Written and checked (see `docs/testing.md`), not yet committed:
+
+- `GET /api/v1/drugs/{drug_id}/structure`: formula, weight, RDKit 2D SVG and the stored 3D model.
+- `ml/pipelines/conformers.py` → `conformers.parquet`: 1,609 of 1,706 drugs have a 3D model;
+  `seed.py` loads it into `drugs.molblock` / `drugs.conformer_note`.
+- Results page: interaction map (SVG) and molecule panel (2D/3D, 3Dmol.js); DrugBank-style
+  interaction cards; hero with a rotating 3D molecule; dark theme.
+
+## Outside the commit plan (2026-10-30)
+
+Written and checked (see `docs/testing.md`), not yet committed:
+
+- Landing page at `#/` with rotating 3D molecules, 3D tilt cards and scroll reveal; checker moved
+  to `#/check`.
+- Accounts: register, sign in, sign out, delete account; checker requires sign-in; saved history
+  of checks with delete (decisions 17–18). `docs/scope.md` product boundary updated.
+- Rate limits (decision 19) and security headers, origin check, CSP (decision 20).
+
+## Outside the commit plan (2026-10-30, redesign)
+
+Written and checked (see `docs/testing.md`), not yet committed:
+
+- Intro with the app icon flying into the header; dark green theme plus a light theme; DrugBank-
+  style mega-menu, Ctrl/⌘ K drug search, new footer (decision 23).
+- Landing page rebuilt from the mockup: 3D hero with parallax, live stats, sources, a public quick
+  check (decision 21), 3D phone, spotlight cards, 3D molecule section, audience illustrations.
+- Drug library and drug pages with identifier mapping, 2D/3D structure, severity breakdown and
+  interaction network (decision 22).
+- Research page: nested knowledge graph, identifier mapping coverage, sources, pipeline.
+
 ## Blocked or waiting
 
 - Full DDInter export requested from the DDInter authors by email; not needed any more for

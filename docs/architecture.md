@@ -56,6 +56,13 @@ in that file comes from the script; rerun it rather than editing the report.
 `featurize` turns each drug's SMILES into a Morgan fingerprint and writes
 `node_features.npz`: the matrix `X` and the `drug_ids` array that says which drug each row is.
 
+`conformers` builds one 3D model (MolBlock) per drug with RDKit and writes
+`data/processed/conformers.parquet` (`drug_id`, `molblock`, `conformer_note`). It runs on all
+CPU cores and has to run before `seed` (decision 14).
+
+`identifiers` maps each drug to its DDInter and KEGG ids and computes InChI / InChIKey, writing
+`data/processed/identifiers.parquet`; also needed before `seed` (decision 22).
+
 ### `ml/graph/`, `ml/models/`
 
 `split_edges` divides the known pairs 70/15/15 into train, val and test, adds the same number
@@ -72,13 +79,21 @@ decoder. Trained weights go to `ml/artifacts/` (gitignored).
 
 FastAPI. `main.py` creates the app and sets CORS for the Vite dev server.
 
-- `api/routes/`: one module per resource (`drugs`, `interactions`), mounted under `/api/v1` in
-  `main.py`. Thin; they validate input and call a service. `/interactions/predict` is still a
-  placeholder.
+- `api/routes/`: one module per resource (`auth`, `checks`, `drugs`, `interactions`, `stats`),
+  mounted under `/api/v1` in `main.py`. Thin; they validate input and call a service.
+  `/interactions/predict` is still a placeholder. Public: search, `/interactions/known` (saved only
+  when signed in, via `optional_user`), `/drugs/{id}/structure`, `/stats`, register and login.
+  Everything else (`/drugs`, `/drugs/{id}`, `/checks`, `/auth/me`) depends on `current_user`.
 - `services/`: the logic. `drugs.py` (search), `interactions.py` (known interactions),
-  `severity.py` (whether a pair may be called contraindicated).
+  `severity.py` (whether a pair may be called contraindicated), `structure.py` (formula,
+  weight and a 2D SVG drawn by RDKit, plus the stored 3D model, for
+  `GET /drugs/{drug_id}/structure`), `auth.py` (password hashing, sessions, `current_user`),
+  `history.py` (save, list and delete a user's checks), `catalog.py` (paged drug list with
+  thumbnails, drug detail with identifiers and every partner, cached `/stats`).
 - `core/errors.py`: every error as `{error, detail, code}`. `core/request_log.py`: one log line
-  and an `X-Request-ID` per request.
+  and an `X-Request-ID` per request. `core/security.py`: security headers, the origin check on
+  POST/DELETE, the body-size cap. `core/rate_limit.py`: per-IP request limits, used as route
+  dependencies.
 - `tests/`: run from `backend/` with pytest. `test_api.py` calls the endpoints through
   `TestClient` and needs the seeded database; it skips itself otherwise.
 - `models/schemas.py`: Pydantic request and response shapes, including the 2–10 drug rule.
@@ -87,8 +102,8 @@ FastAPI. `main.py` creates the app and sets CORS for the Vite dev server.
   response schemas come with the API commits.
 - `core/config.py`: settings from `.env` (`DATABASE_URL`, `MODEL_PATH`, ...). `core/database.py`:
   the engine and session factory.
-- `seed.py`: drops, recreates and reloads both tables from `data/processed/`
-  (`cd backend; ..\.venv\Scripts\python.exe -m app.seed`).
+- `seed.py`: drops, recreates and reloads both tables from `data/processed/`, joining
+  `conformers.parquet` onto `drugs` (`cd backend; ..\.venv\Scripts\python.exe -m app.seed`).
 
 Dependencies are pinned in `backend/requirements.txt`. The database is PostgreSQL 17 with the
 `pg_trgm` extension, one app user and one database, both named `pharmgraph`.
@@ -96,8 +111,21 @@ Dependencies are pinned in `backend/requirements.txt`. The database is PostgreSQ
 ### `frontend/`
 
 React + Vite (JavaScript). `App.jsx` holds the state, picks the page from the URL hash
-(`#/`, `#/results`, `#/about/limitations`) and puts it together from `components/`
-(`Header`, `Hero`, `SearchPanel`, `ResultsPanel`, `SafetyPanel`). `api.js` is the only file
+(`#/` landing, `#/check`, `#/results`, `#/history`, `#/signin`, `#/register`,
+`#/about/limitations`) and puts it together from `components/` (`Header`, `Landing`,
+`SearchPanel`, `AboutCheck`, `ResultsPanel`, `SafetyPanel`, `AuthForm`, `History`, `DrugList`,
+`DrugPage`, `Research`, `KnowledgeGraph`, `CommandPalette`, `Footer`). Routes also take an id:
+`#/drugs/{drug_id}` and `#/research/{section}`. The private routes (`#/check`, `#/results`,
+`#/history`, `#/drugs`, `#/research`) show the sign-in form when there is no session; the landing
+page's quick check works without one. `Brand` holds the intro and the logo that flies into the
+header; `Header` has the mega-menu, theme toggle and account menu; `CommandPalette` is the
+Ctrl/⌘ K drug search; `KnowledgeGraph` is the nested module/table graph on the research page.
+Animation is Motion (`motion/react`), configured once in `main.jsx` to respect reduced motion.
+Styles are split into `styles.css` (tokens, themes, shared parts), `landing.css`, `catalog.css`
+and `research.css`. The results
+page adds `InteractionMap` (SVG diagram of the pairs) and `MoleculePanel` (2D/3D structure of
+one drug at a time); `Molecule3D` wraps 3Dmol.js, loaded on demand, and is shared with the landing page.
+Colours are tokens at the top of `styles.css`; print resets them to dark-on-white. `api.js` is the only file
 that calls the backend and the only place where JSON field names become camelCase. In
 development Vite forwards `/api` to the backend on port 8000 (`vite.config.js`).
 
@@ -126,6 +154,13 @@ happen, so they're easy to break by accident.
 - **The backend doesn't need the model to start.** If the model file is missing, the known-DDI
   endpoint still works and the predict endpoint says why it can't.
 - **The backend never writes to the interaction tables.** They're rebuilt from the pipeline.
+- **Sign-in is checked by the API, not the page.** Every private endpoint depends on
+  `current_user`; hiding a link is not access control.
+- **A user only ever reads or deletes their own rows.** History queries filter on the signed-in
+  user's ID.
+- **`seed.py` never drops the account tables.**
+- **No 3D embedding at request time.** It can take a minute for some molecules; 3D models come
+  from the `conformers` pipeline through the database.
 
 ## Cross-cutting concerns
 
@@ -136,7 +171,10 @@ KEGG and PubChem are mapped onto them in the pipeline, never at request time.
 CC BY-NC-SA, KEGG and the Ayvaz set can't be redistributed, so no endpoint offers a bulk export.
 
 **Network calls.** Only the pipeline talks to external APIs (PubChem, KEGG), and it caches
-every answer. The running app makes no external calls.
+every answer. The running app makes no external calls (the page loads fonts from Google Fonts).
+
+**Security.** Sessions, password hashing, rate limits, headers and the CSP are decisions 18–20.
+Settings: `HTTPS` (Secure cookie and HSTS, set it once served over HTTPS) and `SESSION_DAYS`.
 
 **Decisions.** Anything that changes one of the invariants above, or picks between real
 alternatives, gets an entry in `docs/decisions.md`.
