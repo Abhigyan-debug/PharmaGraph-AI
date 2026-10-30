@@ -3,6 +3,7 @@ uvicorn[standard]==0.54.0
 pydantic-settings==2.15.0
 SQLAlchemy==2.0.55
 psycopg[binary]==3.3.6
+rdkit==2023.9.6
 
 pandas==2.3.3
 pyarrow==25.0.1

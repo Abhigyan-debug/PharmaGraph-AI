@@ -1,26 +1,24 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 
-from app.core.database import engine
 from app.main import app
+from conftest import requires_db, sign_up
 
 WARFARIN, ASPIRIN = "pg_000472", "pg_000702"
 SILDENAFIL, NITROGLYCERIN = "pg_000051", "pg_000512"
 BIVALIRUDIN, GOSERELIN = "pg_000001", "pg_000002"
+QUININE = "pg_000287"
 
-
-def database_ready():
-    try:
-        with engine.connect() as conn:
-            return conn.execute(text("SELECT count(*) FROM known_interactions")).scalar() > 0
-    except Exception:
-        return False
-
-
-pytestmark = pytest.mark.skipif(not database_ready(), reason="needs the seeded PostgreSQL database")
+pytestmark = requires_db
 
 client = TestClient(app)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def signed_in():
+    sign_up(client)
+    yield
+    client.delete("/api/v1/auth/me")
 
 
 def check(ids):
@@ -34,7 +32,12 @@ def test_health():
 def test_search_by_name_brand_and_typo():
     for q in ("warfarin", "Coumadin", "warfrin"):
         hits = client.get("/api/v1/drugs/search", params={"q": q}).json()
-        assert hits[0] == {"id": WARFARIN, "name": "Warfarin"}
+        assert (hits[0]["id"], hits[0]["name"]) == (WARFARIN, "Warfarin")
+
+
+def test_search_puts_name_matches_before_brand_matches():
+    hits = client.get("/api/v1/drugs/search", params={"q": "war"}).json()
+    assert (hits[0]["id"], hits[0]["name"]) == (WARFARIN, "Warfarin")
 
 
 def test_search_query_too_short():
@@ -89,3 +92,36 @@ def test_selection_must_be_two_to_ten_distinct(ids):
 
 def test_every_response_has_a_request_id():
     assert len(client.get("/health").headers["X-Request-ID"]) == 12
+
+
+def test_structure_has_2d_and_3d():
+    body = client.get(f"/api/v1/drugs/{WARFARIN}/structure").json()
+    assert body["formula"] == "C19H16O4"
+    assert body["svg"].lstrip().startswith("<?xml")
+    assert "V2000" in body["molblock"]
+    assert body["note_3d"] is None
+
+
+def test_large_molecule_gets_2d_only():
+    body = client.get(f"/api/v1/drugs/{BIVALIRUDIN}/structure").json()
+    assert body["molblock"] is None
+    assert "2D only" in body["note_3d"]
+
+
+def test_stereo_relaxed_model_says_so():
+    body = client.get(f"/api/v1/drugs/{QUININE}/structure").json()
+    assert "V2000" in body["molblock"]
+    assert "Stereochemistry" in body["note_3d"]
+
+
+def test_structure_unknown_drug():
+    response = client.get("/api/v1/drugs/pg_999999/structure")
+    assert response.status_code == 404
+    assert response.json()["error"] == "structure_not_found"
+
+
+def test_search_says_which_synonym_matched():
+    by_name = {h["name"]: h for h in client.get("/api/v1/drugs/search", params={"q": "aspirin"}).json()}
+    assert by_name["Cefotiam"]["matched"] == "Aspil"  # found through a brand name, not its own name
+    assert client.get("/api/v1/drugs/search", params={"q": "coumadin"}).json()[0]["matched"] == "Coumadin"
+    assert client.get("/api/v1/drugs/search", params={"q": "warfarin"}).json()[0]["matched"] is None

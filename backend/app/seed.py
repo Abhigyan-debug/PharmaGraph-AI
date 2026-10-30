@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from sqlalchemy import func, insert, select, text
 
@@ -20,12 +21,18 @@ def load(session, model, rows):
 
 def main():
     drugs = pd.read_parquet(PROCESSED / "drugs.parquet")
+    drugs = drugs.merge(pd.read_parquet(PROCESSED / "conformers.parquet"), on="drug_id", how="left")
+    drugs = drugs.merge(pd.read_parquet(PROCESSED / "identifiers.parquet"), on="drug_id", how="left")
+    drugs = drugs.merge(pd.read_parquet(PROCESSED / "descriptions.parquet"), on="drug_id", how="left")
     interactions = pd.read_parquet(PROCESSED / "known_interactions.parquet")
     drugs["synonyms"] = drugs.synonyms.apply(list)
+    for column in ["ddinter_ids", "kegg_ids"]:  # Parquet gives arrays (or NaN); PostgreSQL wants lists or NULL
+        drugs[column] = drugs[column].apply(lambda ids: list(ids) if isinstance(ids, (list, np.ndarray)) else None)
 
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-    Base.metadata.drop_all(engine)
+    # Only the drug tables are rebuilt; create_all adds the account tables if missing and never drops them.
+    Base.metadata.drop_all(engine, tables=[KnownInteraction.__table__, Drug.__table__])
     Base.metadata.create_all(engine)
 
     with SessionLocal.begin() as session:
